@@ -29,6 +29,7 @@ const defaultConfig: AppConfig = {
       cn: '',
       intl: '',
     },
+    lowVolumeMode: true,
     // apiKey: '',  // Deprecated, removed from default
     endpoint: '',
     language: 'auto',
@@ -67,6 +68,17 @@ export class ConfigManager {
         this.store.delete('asr.apiKey' as any) // 迁移后删除旧字段
       }
     }
+
+    // 低音量模式迁移策略：
+    // - 新安装：defaultConfig 中已包含 lowVolumeMode=true，不处理
+    // - 旧用户升级：若 asr 存在但无该字段，则显式写入 false
+    if (
+      asrConfig &&
+      typeof asrConfig === 'object' &&
+      !Object.prototype.hasOwnProperty.call(asrConfig, 'lowVolumeMode')
+    ) {
+      this.store.set('asr.lowVolumeMode', false)
+    }
   }
 
   // 获取完整配置
@@ -100,6 +112,10 @@ export class ConfigManager {
     // 确保 region 存在
     if (!config.region) {
       config.region = 'cn'
+    }
+    // 确保 lowVolumeMode 存在
+    if (typeof config.lowVolumeMode !== 'boolean') {
+      config.lowVolumeMode = defaultConfig.asr.lowVolumeMode
     }
     return config
   }

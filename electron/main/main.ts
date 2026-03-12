@@ -125,6 +125,7 @@ app.whenReady().then(async () => {
   // 初始化音频处理器（需要 ASR / LLM Provider 依赖）
   initProcessor({
     getAsrProvider: () => asrProvider,
+    getASRConfig: () => configManager.getASRConfig(),
     initializeASRProvider,
     getLlmProvider: () => llmProvider,
     initializeLLMProvider,

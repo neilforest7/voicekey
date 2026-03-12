@@ -111,4 +111,23 @@ describe('ConfigManager', () => {
       enabled: false,
     })
   })
+
+  it('enables low volume mode by default for new installs', async () => {
+    const configManager = await createManager()
+    expect(configManager.getASRConfig().lowVolumeMode).toBe(true)
+  })
+
+  it('migrates existing users to low volume mode disabled', async () => {
+    seedData = {
+      asr: {
+        provider: 'glm',
+        region: 'cn',
+        apiKeys: { cn: 'legacy', intl: '' },
+        endpoint: '',
+        language: 'auto',
+      },
+    }
+    const configManager = await createManager()
+    expect(configManager.getASRConfig().lowVolumeMode).toBe(false)
+  })
 })

@@ -37,6 +37,9 @@ export const AUDIO_CONFIG = {
   BIT_DEPTH: 16,
 } as const
 
+// 低音量模式固定增益（dB）
+export const LOW_VOLUME_GAIN_DB = 10
+
 export const HISTORY_RETENTION_DAYS = 90
 
 // 日志保留与限制

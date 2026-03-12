@@ -9,6 +9,7 @@ let lastCommand: {
     toFormat: ReturnType<typeof vi.fn>
     audioCodec: ReturnType<typeof vi.fn>
     audioBitrate: ReturnType<typeof vi.fn>
+    audioFilters: ReturnType<typeof vi.fn>
     on: ReturnType<typeof vi.fn>
     save: ReturnType<typeof vi.fn>
   }
@@ -21,6 +22,7 @@ const createCommand = () => {
     toFormat: vi.fn(() => chain),
     audioCodec: vi.fn(() => chain),
     audioBitrate: vi.fn(() => chain),
+    audioFilters: vi.fn(() => chain),
     on: vi.fn((event: string, handler: (err?: Error) => void) => {
       handlers[event] = handler
       return chain
@@ -97,6 +99,16 @@ describe('audio converter', () => {
 
     await expect(convertToMP3('/input.webm', '/output.mp3')).resolves.toBeUndefined()
     expect(lastCommand?.chain.save).toHaveBeenCalledWith('/output.mp3')
+    expect(lastCommand?.chain.audioFilters).not.toHaveBeenCalled()
+  })
+
+  it('applies gain filter when gainDb is provided', async () => {
+    const { convertToMP3 } = await loadConverter()
+
+    await expect(
+      convertToMP3('/input.webm', '/output.mp3', { gainDb: 10 }),
+    ).resolves.toBeUndefined()
+    expect(lastCommand?.chain.audioFilters).toHaveBeenCalledWith('volume=10dB')
   })
 
   it('rejects when ffmpeg conversion fails', async () => {

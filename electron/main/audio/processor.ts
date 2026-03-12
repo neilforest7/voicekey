@@ -15,6 +15,7 @@
 import { app } from 'electron'
 import fs from 'fs'
 import path from 'node:path'
+import { LOW_VOLUME_GAIN_DB } from '../../shared/constants'
 import { updateOverlay, hideOverlay } from '../window/overlay'
 import { t } from '../i18n'
 import { historyManager } from '../history-manager'
@@ -23,6 +24,7 @@ import { convertToMP3 } from './converter'
 import { getCurrentSession, updateSession, clearSession } from './session-manager'
 import type { ASRProvider } from '../asr-provider'
 import type { LLMProvider } from '../llm-provider'
+import type { ASRConfig } from '../../shared/types'
 
 /**
  * 处理器外部依赖
@@ -31,6 +33,8 @@ import type { LLMProvider } from '../llm-provider'
 type ProcessorDeps = {
   /** 获取 ASR Provider 实例 */
   getAsrProvider: () => ASRProvider | null
+  /** 获取当前 ASR 配置 */
+  getASRConfig: () => ASRConfig
   /** 初始化 ASR Provider */
   initializeASRProvider: () => void
   /** 获取 LLM Provider 实例 */
@@ -87,8 +91,13 @@ export async function handleAudioData(buffer: Buffer): Promise<void> {
     console.log(`[Audio:Processor] ⏱️ File save: ${saveDuration}ms`)
 
     // Step 2: 转换为 MP3
+    const asrConfig = deps.getASRConfig()
+    const lowVolumeModeEnabled = asrConfig.lowVolumeMode ?? true
+    console.log(`[Audio:Processor] Low volume mode enabled: ${lowVolumeModeEnabled}`)
     const conversionStartTime = Date.now()
-    await convertToMP3(tempWebmPath, tempMp3Path)
+    await convertToMP3(tempWebmPath, tempMp3Path, {
+      gainDb: lowVolumeModeEnabled ? LOW_VOLUME_GAIN_DB : undefined,
+    })
     const conversionDuration = Date.now() - conversionStartTime
 
     // 检查取消

@@ -17,6 +17,10 @@ import { t } from '../i18n'
 let ffmpeg: any
 let ffmpegInitialized = false
 
+export interface ConvertToMP3Options {
+  gainDb?: number
+}
+
 /**
  * 初始化 FFmpeg
  *
@@ -61,7 +65,11 @@ export function initializeFfmpeg(): void {
  * @returns Promise<void> - 转换完成时 resolve
  * @throws {Error} 转换失败时 reject
  */
-export function convertToMP3(inputPath: string, outputPath: string): Promise<void> {
+export function convertToMP3(
+  inputPath: string,
+  outputPath: string,
+  options?: ConvertToMP3Options,
+): Promise<void> {
   const conversionStartTime = Date.now()
   return new Promise((resolve, reject) => {
     // 确保 ffmpeg 已初始化
@@ -70,11 +78,17 @@ export function convertToMP3(inputPath: string, outputPath: string): Promise<voi
     console.log(`[Audio:Converter] Converting audio to MP3...`)
     console.log(`[Audio:Converter]   Input: ${inputPath}`)
     console.log(`[Audio:Converter]   Output: ${outputPath}`)
+    if (typeof options?.gainDb === 'number') {
+      console.log(`[Audio:Converter]   Gain: +${options.gainDb}dB`)
+    }
 
-    ffmpeg(inputPath)
-      .toFormat('mp3')
-      .audioCodec('libmp3lame')
-      .audioBitrate('128k')
+    const command = ffmpeg(inputPath).toFormat('mp3').audioCodec('libmp3lame').audioBitrate('128k')
+
+    if (typeof options?.gainDb === 'number') {
+      command.audioFilters(`volume=${options.gainDb}dB`)
+    }
+
+    command
       .on('end', () => {
         const duration = Date.now() - conversionStartTime
         console.log(`[Audio:Converter] ⏱️ Conversion completed in ${duration}ms`)

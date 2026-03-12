@@ -71,6 +71,8 @@
     "showKey": "Show key",
     "hideKey": "Hide key",
     "durationWarning": "Note: Maximum duration for single voice input is 30 seconds.",
+    "lowVolumeMode": "Low-volume mode",
+    "lowVolumeModeHelp": "Boost quiet speech in software before ASR (may also amplify background noise).",
     "region": "Service Region",
     "regionChina": "China",
     "regionIntl": "International",

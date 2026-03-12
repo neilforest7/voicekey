@@ -19,6 +19,7 @@ export interface ASRConfig {
     cn: string
     intl: string
   }
+  lowVolumeMode?: boolean
 
   // Deprecated: for backward compatibility during migration
   apiKey?: string

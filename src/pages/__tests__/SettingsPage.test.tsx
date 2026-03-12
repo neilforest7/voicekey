@@ -50,6 +50,7 @@ const baseConfig = {
     provider: 'glm',
     region: 'cn' as const,
     apiKeys: { cn: 'k-cn', intl: '' },
+    lowVolumeMode: true,
     endpoint: '',
     language: 'auto',
   },
@@ -96,6 +97,26 @@ describe('SettingsPage', () => {
       hotkey: { pttKey: 'Command+J', toggleSettings: 'Command+,' },
     })
     expect(screen.getByText('settings.result.saveSuccess')).toBeInTheDocument()
+  })
+
+  it('saves low volume mode switch change', async () => {
+    mockSetConfig.mockResolvedValue(undefined)
+    render(<SettingsPage />)
+    await waitFor(() => expect(mockGetConfig).toHaveBeenCalledTimes(1))
+
+    fireEvent.click(screen.getByRole('switch', { name: 'settings.lowVolumeMode' }))
+
+    const saveButton = screen.getByText('settings.saveConfig')
+    await waitFor(() => expect(saveButton).toBeEnabled())
+    fireEvent.click(saveButton)
+
+    await waitFor(() => expect(mockSetConfig).toHaveBeenCalled())
+    expect(mockSetConfig.mock.calls[0][0]).toMatchObject({
+      asr: {
+        ...baseConfig.asr,
+        lowVolumeMode: false,
+      },
+    })
   })
 
   it('shows error when hotkeys invalid', async () => {

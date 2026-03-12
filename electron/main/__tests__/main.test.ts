@@ -42,7 +42,9 @@ const mockSendLanguageSnapshotToWindow = vi.hoisted(() => vi.fn())
 const mockT = vi.hoisted(() => vi.fn((key: string) => `t:${key}`))
 
 const mockGetAppConfig = vi.hoisted(() => vi.fn(() => ({ language: 'en', autoLaunch: true })))
-const mockGetASRConfig = vi.hoisted(() => vi.fn(() => ({ region: 'cn', apiKeys: {} })))
+const mockGetASRConfig = vi.hoisted(() =>
+  vi.fn(() => ({ provider: 'glm', region: 'cn', apiKeys: {}, lowVolumeMode: true })),
+)
 const mockGetLLMRefineConfig = vi.hoisted(() =>
   vi.fn(() => ({
     enabled: true,
@@ -231,7 +233,14 @@ describe('main startup', () => {
       openAtLogin: true,
       openAsHidden: true,
     })
-    expect(mockASRProviderCtor).toHaveBeenCalledWith({ region: 'cn', apiKeys: {} })
+    expect(mockGetASRConfig).toHaveBeenCalled()
+    expect(mockASRProviderCtor).toHaveBeenCalledWith(
+      expect.objectContaining({
+        region: 'cn',
+        apiKeys: {},
+        lowVolumeMode: true,
+      }),
+    )
     expect(mockLLMProviderCtor).toHaveBeenCalledWith(
       {
         enabled: true,
@@ -245,6 +254,7 @@ describe('main startup', () => {
     expect(mockInitProcessor).toHaveBeenCalledWith(
       expect.objectContaining({
         getAsrProvider: expect.any(Function),
+        getASRConfig: expect.any(Function),
         initializeASRProvider: expect.any(Function),
         getLlmProvider: expect.any(Function),
         initializeLLMProvider: expect.any(Function),

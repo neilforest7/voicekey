@@ -71,6 +71,8 @@
     "showKey": "显示密钥",
     "hideKey": "隐藏密钥",
     "durationWarning": "注意：单次语音输入时长请勿超过 30 秒。",
+    "lowVolumeMode": "低音量模式",
+    "lowVolumeModeHelp": "在调用 ASR 前对小声语音进行软件增益（可能同时放大环境噪声）。",
     "region": "服务区域",
     "regionChina": "中国",
     "regionIntl": "国际",

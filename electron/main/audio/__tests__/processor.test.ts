@@ -77,6 +77,7 @@ describe('audio processor', () => {
     const { initProcessor, handleAudioData } = await loadProcessor()
     initProcessor({
       getAsrProvider: () => null,
+      getASRConfig: () => ({ provider: 'glm', region: 'cn', apiKeys: { cn: '', intl: '' } }),
       initializeASRProvider: vi.fn(),
     })
 
@@ -105,6 +106,12 @@ describe('audio processor', () => {
     const getAsrProvider = vi.fn(() => ({ transcribe }) as any)
     initProcessor({
       getAsrProvider,
+      getASRConfig: () => ({
+        provider: 'glm',
+        region: 'cn',
+        apiKeys: { cn: '', intl: '' },
+        lowVolumeMode: true,
+      }),
       initializeASRProvider: vi.fn(),
     })
 
@@ -115,7 +122,9 @@ describe('audio processor', () => {
     await vi.runAllTimersAsync()
     vi.useRealTimers()
 
-    expect(mockConvertToMP3).toHaveBeenCalled()
+    expect(mockConvertToMP3).toHaveBeenCalledWith(expect.any(String), expect.any(String), {
+      gainDb: 10,
+    })
     expect(transcribe).toHaveBeenCalled()
     expect(mockUpdateSession).toHaveBeenCalledWith({
       transcription: 'hello world',
@@ -149,6 +158,7 @@ describe('audio processor', () => {
 
     initProcessor({
       getAsrProvider: () => ({ transcribe }) as any,
+      getASRConfig: () => ({ provider: 'glm', region: 'cn', apiKeys: { cn: '', intl: '' } }),
       initializeASRProvider: vi.fn(),
     })
 
@@ -171,6 +181,7 @@ describe('audio processor', () => {
 
     initProcessor({
       getAsrProvider: () => null,
+      getASRConfig: () => ({ provider: 'glm', region: 'cn', apiKeys: { cn: '', intl: '' } }),
       initializeASRProvider: vi.fn(),
     })
 
@@ -208,6 +219,7 @@ describe('audio processor', () => {
 
     initProcessor({
       getAsrProvider: () => ({ transcribe }) as any,
+      getASRConfig: () => ({ provider: 'glm', region: 'cn', apiKeys: { cn: '', intl: '' } }),
       initializeASRProvider: vi.fn(),
       getLlmProvider: () =>
         ({
@@ -248,6 +260,7 @@ describe('audio processor', () => {
 
     initProcessor({
       getAsrProvider: () => ({ transcribe }) as any,
+      getASRConfig: () => ({ provider: 'glm', region: 'cn', apiKeys: { cn: '', intl: '' } }),
       initializeASRProvider: vi.fn(),
       getLlmProvider: () =>
         ({
@@ -266,5 +279,72 @@ describe('audio processor', () => {
       duration: session.duration,
     })
     expect(mockInjectText).toHaveBeenCalledWith('raw text')
+  })
+
+  it('does not apply gain when low volume mode is disabled', async () => {
+    const { initProcessor, handleAudioData } = await loadProcessor()
+    const session = {
+      id: 'session-1',
+      startTime: new Date(),
+      status: 'recording',
+      duration: 1200,
+    }
+    mockGetCurrentSession.mockReturnValue(session)
+
+    const transcribe = vi.fn().mockResolvedValue({
+      text: 'hello world',
+      id: 't-5',
+      created: Date.now(),
+      model: 'glm',
+    })
+    initProcessor({
+      getAsrProvider: () => ({ transcribe }) as any,
+      getASRConfig: () => ({
+        provider: 'glm',
+        region: 'cn',
+        apiKeys: { cn: '', intl: '' },
+        lowVolumeMode: false,
+      }),
+      initializeASRProvider: vi.fn(),
+    })
+
+    await handleAudioData(Buffer.from('audio'))
+
+    expect(mockConvertToMP3).toHaveBeenCalledWith(expect.any(String), expect.any(String), {
+      gainDb: undefined,
+    })
+  })
+
+  it('applies default gain when low volume mode is undefined', async () => {
+    const { initProcessor, handleAudioData } = await loadProcessor()
+    const session = {
+      id: 'session-1',
+      startTime: new Date(),
+      status: 'recording',
+      duration: 1200,
+    }
+    mockGetCurrentSession.mockReturnValue(session)
+
+    const transcribe = vi.fn().mockResolvedValue({
+      text: 'hello world',
+      id: 't-6',
+      created: Date.now(),
+      model: 'glm',
+    })
+    initProcessor({
+      getAsrProvider: () => ({ transcribe }) as any,
+      getASRConfig: () => ({
+        provider: 'glm',
+        region: 'cn',
+        apiKeys: { cn: '', intl: '' },
+      }),
+      initializeASRProvider: vi.fn(),
+    })
+
+    await handleAudioData(Buffer.from('audio'))
+
+    expect(mockConvertToMP3).toHaveBeenCalledWith(expect.any(String), expect.any(String), {
+      gainDb: 10,
+    })
   })
 })

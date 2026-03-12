@@ -34,6 +34,7 @@ export default function SettingsPage() {
         cn: '',
         intl: '',
       },
+      lowVolumeMode: true,
       endpoint: '',
       language: 'auto',
     },
@@ -222,6 +223,7 @@ export default function SettingsPage() {
       config.asr.region !== originalConfig.asr.region ||
       config.asr.endpoint !== originalConfig.asr.endpoint ||
       config.asr.language !== originalConfig.asr.language ||
+      (config.asr.lowVolumeMode ?? true) !== (originalConfig.asr.lowVolumeMode ?? true) ||
       config.asr.apiKeys.cn !== originalConfig.asr.apiKeys.cn ||
       config.asr.apiKeys.intl !== originalConfig.asr.apiKeys.intl ||
       config.llmRefine.enabled !== originalConfig.llmRefine.enabled ||
@@ -438,6 +440,24 @@ export default function SettingsPage() {
               <AlertTriangle className="h-4 w-4 text-yellow-500" />
               <p className="text-sm text-muted-foreground">{t('settings.durationWarning')}</p>
             </div>
+          </div>
+
+          <div className="flex items-center justify-between space-x-2">
+            <div className="space-y-0.5">
+              <Label htmlFor="lowVolumeMode">{t('settings.lowVolumeMode')}</Label>
+              <p className="text-sm text-muted-foreground">{t('settings.lowVolumeModeHelp')}</p>
+            </div>
+            <Switch
+              id="lowVolumeMode"
+              checked={config.asr.lowVolumeMode ?? true}
+              onCheckedChange={(checked) =>
+                setConfig((prev) => ({
+                  ...prev,
+                  asr: { ...prev.asr, lowVolumeMode: checked },
+                }))
+              }
+              className="no-drag cursor-pointer"
+            />
           </div>
         </CardContent>
       </Card>
