@@ -69,14 +69,12 @@ export class IOHookManager extends EventEmitter {
       this.pressedKeys.add(e.keycode)
       if (this.debug) console.log('[IOHook] KeyDown:', e.keycode, (UiohookKey as any)[e.keycode])
       this.emit('keydown', e.keycode)
-      console.log('IOHookManager: pressedKeys:', this.pressedKeys)
       this.checkHotkeys()
     } else if (e.type === 5) {
       // KeyUp
       this.pressedKeys.delete(e.keycode)
       if (this.debug) console.log('[IOHook] KeyUp:', e.keycode, (UiohookKey as any)[e.keycode])
       this.emit('keyup', e.keycode)
-      console.log('IOHookManager: pressedKeys:', this.pressedKeys)
     }
   }
 

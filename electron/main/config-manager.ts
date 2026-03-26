@@ -1,3 +1,4 @@
+import { safeStorage } from 'electron'
 import Store from 'electron-store'
 import {
   AppConfig,
@@ -7,6 +8,8 @@ import {
   LLMRefineConfig,
 } from '../shared/types'
 import { DEFAULT_HOTKEYS, LLM_REFINE } from '../shared/constants'
+
+const ENCRYPTED_PREFIX = 'enc:'
 
 // 配置Schema
 interface ConfigSchema {
@@ -55,6 +58,33 @@ export class ConfigManager {
     this.migrate()
   }
 
+  // 加密 API Key（返回 'enc:' + base64）
+  private encryptKey(plainText: string): string {
+    if (!plainText) return plainText
+    try {
+      if (safeStorage.isEncryptionAvailable()) {
+        const encrypted = safeStorage.encryptString(plainText)
+        return ENCRYPTED_PREFIX + encrypted.toString('base64')
+      }
+    } catch (e) {
+      console.error('[ConfigManager] Failed to encrypt API key:', e)
+    }
+    return plainText
+  }
+
+  // 解密 API Key（自动识别是否已加密）
+  private decryptKey(value: string): string {
+    if (!value || !value.startsWith(ENCRYPTED_PREFIX)) return value
+    try {
+      const base64 = value.slice(ENCRYPTED_PREFIX.length)
+      const buffer = Buffer.from(base64, 'base64')
+      return safeStorage.decryptString(buffer)
+    } catch (e) {
+      console.error('[ConfigManager] Failed to decrypt API key:', e)
+      return ''
+    }
+  }
+
   // 迁移旧配置
   private migrate(): void {
     // 检查是否有旧的 apiKey，如果有且 cn key 为空，则迁移
@@ -79,6 +109,23 @@ export class ConfigManager {
     ) {
       this.store.set('asr.lowVolumeMode', false)
     }
+
+    // API Key 加密迁移：将明文 key 加密存储
+    this.migrateApiKeysEncryption()
+  }
+
+  // 将未加密的 API Key 迁移为加密存储
+  private migrateApiKeysEncryption(): void {
+    if (!safeStorage.isEncryptionAvailable()) return
+
+    const apiKeys = this.store.get('asr.apiKeys', { cn: '', intl: '' })
+    for (const region of ['cn', 'intl'] as const) {
+      const key = apiKeys[region]
+      if (key && !key.startsWith(ENCRYPTED_PREFIX)) {
+        apiKeys[region] = this.encryptKey(key)
+      }
+    }
+    this.store.set('asr.apiKeys', apiKeys)
   }
 
   // 获取完整配置
@@ -109,6 +156,11 @@ export class ConfigManager {
     if (!config.apiKeys) {
       config.apiKeys = { cn: '', intl: '' }
     }
+    // 解密 API Keys
+    config.apiKeys = {
+      cn: this.decryptKey(config.apiKeys.cn),
+      intl: this.decryptKey(config.apiKeys.intl),
+    }
     // 确保 region 存在
     if (!config.region) {
       config.region = 'cn'
@@ -123,7 +175,15 @@ export class ConfigManager {
   // 设置ASR配置
   setASRConfig(config: Partial<ASRConfig>): void {
     const current = this.getASRConfig()
-    this.store.set('asr', { ...current, ...config })
+    const merged = { ...current, ...config }
+    // 加密 API Keys 后再存储
+    if (merged.apiKeys) {
+      merged.apiKeys = {
+        cn: this.encryptKey(merged.apiKeys.cn),
+        intl: this.encryptKey(merged.apiKeys.intl),
+      }
+    }
+    this.store.set('asr', merged)
   }
 
   // 获取 LLM 润色配置
