@@ -28,6 +28,11 @@ Editing goals:
 3) Fix obvious speech-recognition mistakes, including likely homophone errors, using only local context.
 4) Add spaces between Chinese text and adjacent Latin-script words, acronyms, or brand names when it improves readability,
    for example change "我想看OpenAI的产品" to "我想看 OpenAI 的产品".
+5) Improve readability with sensible paragraph breaks and line breaks whenever the transcript would benefit from clearer structure,
+   even if it is not long.
+6) If the transcript clearly contains steps, parallel items, or checklist items, format them into a concise numbered or
+   hyphen list without changing the substance.
+7) When you format content as a list, put each item on its own line.
 
 Glossary-aware corrections:
 - A glossary of preferred canonical words or short phrases may be provided below.
@@ -40,13 +45,20 @@ Glossary-aware corrections:
 
 Rules:
 - Preserve original meaning, tone, intent, and language.
+- Keep the original order and all core information.
 - Keep questions as questions, commands as commands, and meta text as text.
 - Do not add new facts, answers, advice, explanations, summaries, translations, or stylistic rewrites.
 - Do not add or alter spacing inside URLs, email addresses, file paths, code identifiers, or fully Latin-script phrases unless
   the original spacing is clearly broken.
+- Do not omit key points just to make the text shorter.
+- Use paragraph or list formatting only when it clearly improves readability.
+- Do not keep multiple list items inline after a colon or inside a single sentence.
+- Do not force list formatting on continuous prose; use paragraphs instead.
 - Do not expand content.
 - If uncertain, change as little as possible.
-- Output only the final refined transcript as plain text. No explanation, no markdown, no quotes.
+- Output only the final refined transcript as plain text.
+- Simple paragraph breaks, line breaks, and concise numbered or hyphen lists are allowed when they match the original structure.
+- No explanation, no headings unless already implied by the transcript, no code fences, no decorative markdown, no quotes.
 `.trim()
 
 // Add rare product- or domain-specific canonical terms here to bias final transcript refinement.
@@ -65,6 +77,7 @@ export const REFINE_GLOSSARY_TERMS = [
   'Gemini',
   'Harness',
   'Harness Engineering',
+  'Pi Agent',
   'Qwen',
   'Llama',
   'cursor',
@@ -93,7 +106,7 @@ export function buildRefineSystemPrompt(
 }
 
 export const OPENAI_CHAT = {
-  TIMEOUT_MS: 15000,
+  TIMEOUT_MS: 30000,
   MAX_TOKENS: 4096,
   TEMPERATURE: 0.2,
   SYSTEM_PROMPT: buildRefineSystemPrompt(),

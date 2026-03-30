@@ -6,7 +6,7 @@ Main-process audio pipeline for recording sessions and chunked transcription.
 
 - `index.ts` - Re-exports the audio module surface.
 - `session-manager.ts` - Owns the active recording session lifecycle, `sessionId`, and HUD state transitions.
-- `processor.ts` - Accepts audio chunks, writes temp files, converts to MP3, calls GLM ASR, merges chunk text in order, and runs the final refine/history/inject step once.
+- `processor.ts` - Accepts audio chunks, writes temp files, converts to MP3, calls GLM ASR, merges chunk text in order, logs final line-break metadata, and runs the final refine/history/inject step once.
 - `converter.ts` - Initializes FFmpeg and converts captured audio to the upload format, with optional low-volume gain.
 - `__tests__/` - Coverage for session lifecycle, chunk processing, and conversion helpers.
 
@@ -15,5 +15,5 @@ Main-process audio pipeline for recording sessions and chunked transcription.
 1. The renderer records one session for up to 3 minutes and rotates internal chunks every 29 seconds.
 2. The main process tracks chunk work by `sessionId + chunkIndex` and can process chunk ASR requests out of order.
 3. Finalization only runs after the final chunk has been seen and every chunk from `0..finalChunkIndex` has produced text.
-4. Refinement, history writes, and text injection happen once per session after the merged transcript is ready.
+4. Refinement, line-break-aware final text logging, history writes, and text injection happen once per session after the merged transcript is ready.
 5. Any chunk failure or session cancellation aborts the session and discards late results.

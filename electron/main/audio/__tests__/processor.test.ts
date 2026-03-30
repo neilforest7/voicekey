@@ -241,6 +241,55 @@ describe('audio processor', () => {
     expect(mockInjectText).toHaveBeenCalledWith('hello world')
   })
 
+  it('preserves multiline refined text through update, history, and injection', async () => {
+    const { initProcessor, handleAudioChunk } = await loadProcessor()
+    const session = createSession()
+    mockGetCurrentSession.mockReturnValue(session)
+
+    const transcribe = vi.fn().mockResolvedValue({
+      text: 'raw text',
+      id: 't-1',
+      created: Date.now(),
+      model: 'glm',
+    })
+    const refinedText = '1. first item\n2. second item'
+    const refineText = vi.fn().mockResolvedValue(refinedText)
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined)
+
+    initProcessor({
+      getAsrProvider: () => ({ transcribe }) as any,
+      getASRConfig: () => ({ provider: 'glm', region: 'cn', apiKeys: { cn: '', intl: '' } }),
+      initializeASRProvider: vi.fn(),
+      getRefineService: () =>
+        ({
+          isEnabled: () => true,
+          hasValidConfig: () => true,
+          refineText,
+        }) as any,
+    })
+
+    try {
+      await handleAudioChunk(createChunk())
+
+      expect(mockUpdateSession).toHaveBeenCalledWith({
+        transcription: refinedText,
+        status: 'completed',
+      })
+      expect(mockHistoryAdd).toHaveBeenCalledWith({
+        text: refinedText,
+        duration: session.duration,
+      })
+      expect(mockInjectText).toHaveBeenCalledWith(refinedText)
+      expect(logSpy).toHaveBeenCalledWith('[Audio:Processor] Final text formatting:', {
+        length: refinedText.length,
+        hasLineBreaks: true,
+        lineBreakCount: 1,
+      })
+    } finally {
+      logSpy.mockRestore()
+    }
+  })
+
   it('keeps chunk state until missing earlier chunks arrive after the final chunk', async () => {
     const { initProcessor, handleAudioChunk, __testUtils } = await loadProcessor()
     mockGetCurrentSession.mockReturnValue(createSession())

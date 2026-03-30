@@ -232,6 +232,13 @@ async function finalizeSessionIfReady(sessionState: ChunkSessionState): Promise<
     return
   }
 
+  const lineBreakCount = countLineBreaks(finalText)
+  console.log('[Audio:Processor] Final text formatting:', {
+    length: finalText.length,
+    hasLineBreaks: lineBreakCount > 0,
+    lineBreakCount,
+  })
+
   updateSession({
     transcription: finalText,
     status: 'completed',
@@ -356,6 +363,10 @@ function mergeTranscriptSegments(segments: string[]): string {
   }
 
   return merged
+}
+
+function countLineBreaks(text: string): number {
+  return text.match(/\r\n|\r|\n/gu)?.length ?? 0
 }
 
 function isAsciiWordBoundary(left?: string, right?: string): boolean {

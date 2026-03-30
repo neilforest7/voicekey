@@ -39,6 +39,34 @@ describe('buildRefineSystemPrompt', () => {
     expect(prompt).not.toContain('Preferred glossary terms:')
   })
 
+  it('preserves refine behavior while requiring line-separated list items', async () => {
+    const { buildRefineSystemPrompt } = await import('../../../shared/constants')
+
+    const prompt = buildRefineSystemPrompt([])
+
+    expect(prompt).toContain(
+      'Improve readability with sensible paragraph breaks and line breaks whenever the transcript would benefit from clearer structure,',
+    )
+    expect(prompt).toContain(
+      'If the transcript clearly contains steps, parallel items, or checklist items, format them into a concise numbered or',
+    )
+    expect(prompt).toContain('When you format content as a list, put each item on its own line.')
+    expect(prompt).toContain('Keep the original order and all core information.')
+    expect(prompt).toContain('Do not omit key points just to make the text shorter.')
+    expect(prompt).toContain(
+      'Use paragraph or list formatting only when it clearly improves readability.',
+    )
+    expect(prompt).toContain(
+      'Do not keep multiple list items inline after a colon or inside a single sentence.',
+    )
+    expect(prompt).toContain(
+      'Do not force list formatting on continuous prose; use paragraphs instead.',
+    )
+    expect(prompt).toContain(
+      'Simple paragraph breaks, line breaks, and concise numbered or hyphen lists are allowed when they match the original structure.',
+    )
+  })
+
   it('renders unique glossary entries as canonical preferred terms', async () => {
     const { buildRefineSystemPrompt } = await import('../../../shared/constants')
 
@@ -130,6 +158,21 @@ describe('RefineService', () => {
     )
     expect(payload.messages[0].content).toContain(
       'Do not add or alter spacing inside URLs, email addresses, file paths, code identifiers',
+    )
+    expect(payload.messages[0].content).toContain(
+      'Improve readability with sensible paragraph breaks and line breaks whenever the transcript would benefit from clearer structure,',
+    )
+    expect(payload.messages[0].content).toContain(
+      'When you format content as a list, put each item on its own line.',
+    )
+    expect(payload.messages[0].content).toContain(
+      'Use paragraph or list formatting only when it clearly improves readability.',
+    )
+    expect(payload.messages[0].content).toContain(
+      'Do not keep multiple list items inline after a colon or inside a single sentence.',
+    )
+    expect(payload.messages[0].content).toContain(
+      'Do not force list formatting on continuous prose; use paragraphs instead.',
     )
 
     expect(payload.messages[1]).toEqual({

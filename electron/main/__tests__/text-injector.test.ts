@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Key } from '@nut-tree-fork/nut-js'
 
 const clipboardMock = {
@@ -19,6 +19,7 @@ const keyboardMock = {
 }
 
 const KeyMock = {
+  LeftCmd: 'LeftCmd',
   LeftControl: 'LeftControl',
   V: 'V',
 }
@@ -38,11 +39,24 @@ const loadInjector = async () => {
 }
 
 describe('TextInjector', () => {
+  const originalPlatform = process.platform
+
+  const setPlatform = (platform: NodeJS.Platform) => {
+    Object.defineProperty(process, 'platform', {
+      value: platform,
+      configurable: true,
+    })
+  }
+
   beforeEach(() => {
     vi.resetModules()
     vi.clearAllMocks()
     clipboardMock.availableFormats.mockReturnValue([])
     clipboardMock.readImage.mockReturnValue({ isEmpty: () => true })
+  })
+
+  afterEach(() => {
+    setPlatform(originalPlatform)
   })
 
   it('skips injection on empty text', async () => {
@@ -53,16 +67,39 @@ describe('TextInjector', () => {
     expect(clipboardMock.writeText).not.toHaveBeenCalled()
   })
 
-  it('injects text via keyboard typing on non-win32', async () => {
+  it('types single-line text on macOS', async () => {
+    setPlatform('darwin')
     const { TextInjector } = await loadInjector()
     const injector = new TextInjector()
     await injector.injectText('hello')
-    if (process.platform === 'win32') {
-      expect(keyboardMock.type).not.toHaveBeenCalled()
-      expect(clipboardMock.writeText).toHaveBeenCalled()
-    } else {
-      expect(keyboardMock.type).toHaveBeenCalledWith('hello')
-    }
+    expect(keyboardMock.type).toHaveBeenCalledWith('hello')
+    expect(clipboardMock.writeText).not.toHaveBeenCalled()
+  })
+
+  it('pastes multiline text on macOS to preserve line breaks', async () => {
+    setPlatform('darwin')
+    const { TextInjector } = await loadInjector()
+    const injector = new TextInjector()
+
+    await injector.injectText('first line\nsecond line')
+
+    expect(keyboardMock.type).not.toHaveBeenCalled()
+    expect(clipboardMock.writeText).toHaveBeenCalledWith('first line\nsecond line')
+    expect(keyboardMock.pressKey).toHaveBeenCalledWith(KeyMock.LeftCmd, KeyMock.V)
+    expect(keyboardMock.releaseKey).toHaveBeenCalledWith(KeyMock.LeftCmd, KeyMock.V)
+  })
+
+  it('uses clipboard paste on windows', async () => {
+    setPlatform('win32')
+    const { TextInjector } = await loadInjector()
+    const injector = new TextInjector()
+
+    await injector.injectText('hello')
+
+    expect(keyboardMock.type).not.toHaveBeenCalled()
+    expect(clipboardMock.writeText).toHaveBeenCalledWith('hello')
+    expect(keyboardMock.pressKey).toHaveBeenCalledWith(KeyMock.LeftControl, KeyMock.V)
+    expect(keyboardMock.releaseKey).toHaveBeenCalledWith(KeyMock.LeftControl, KeyMock.V)
   })
 
   it('pressKey triggers keyboard press and release', async () => {
@@ -75,7 +112,7 @@ describe('TextInjector', () => {
   })
 
   it('checkPermissions returns false when macOS permission is missing', async () => {
-    if (process.platform !== 'darwin') return
+    setPlatform('darwin')
     keyboardMock.type.mockRejectedValueOnce(new Error('no permission'))
     const { TextInjector } = await loadInjector()
     const injector = new TextInjector()
@@ -85,6 +122,7 @@ describe('TextInjector', () => {
   })
 
   it('pasteFromClipboard preserves clipboard content', async () => {
+    setPlatform('darwin')
     const { TextInjector } = await loadInjector()
     const injector = new TextInjector()
 
@@ -104,8 +142,8 @@ describe('TextInjector', () => {
     ).pasteFromClipboard('new')
 
     expect(clipboardMock.writeText).toHaveBeenCalledWith('new')
-    expect(keyboardMock.pressKey).toHaveBeenCalledWith(KeyMock.LeftControl, KeyMock.V)
-    expect(keyboardMock.releaseKey).toHaveBeenCalledWith(KeyMock.LeftControl, KeyMock.V)
+    expect(keyboardMock.pressKey).toHaveBeenCalledWith(KeyMock.LeftCmd, KeyMock.V)
+    expect(keyboardMock.releaseKey).toHaveBeenCalledWith(KeyMock.LeftCmd, KeyMock.V)
     expect(clipboardMock.write).toHaveBeenCalledWith({
       text: 'old',
       html: '<p>old</p>',

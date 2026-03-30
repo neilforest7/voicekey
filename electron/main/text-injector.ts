@@ -85,11 +85,19 @@ export class TextInjector {
   }
 
   private async typeText(text: string): Promise<void> {
-    if (process.platform === 'win32') {
+    if (this.shouldPasteFromClipboard(text)) {
       await this.pasteFromClipboard(text)
       return
     }
     await keyboard.type(text)
+  }
+
+  private shouldPasteFromClipboard(text: string): boolean {
+    if (process.platform === 'win32') {
+      return true
+    }
+
+    return process.platform === 'darwin' && this.hasLineBreaks(text)
   }
 
   private captureClipboard(): ClipboardSnapshot {
@@ -140,15 +148,24 @@ export class TextInjector {
 
   private async pasteFromClipboard(text: string): Promise<void> {
     const snapshot = this.captureClipboard()
+    const modifierKey = this.getPasteModifierKey()
     try {
       clipboard.writeText(text)
       await this.delay(50)
-      await keyboard.pressKey(Key.LeftControl, Key.V)
-      await keyboard.releaseKey(Key.LeftControl, Key.V)
+      await keyboard.pressKey(modifierKey, Key.V)
+      await keyboard.releaseKey(modifierKey, Key.V)
       await this.delay(50)
     } finally {
       this.restoreClipboard(snapshot)
     }
+  }
+
+  private getPasteModifierKey(): Key {
+    return process.platform === 'darwin' ? Key.LeftCmd : Key.LeftControl
+  }
+
+  private hasLineBreaks(text: string): boolean {
+    return /[\r\n]/u.test(text)
   }
 
   // 延迟函数
