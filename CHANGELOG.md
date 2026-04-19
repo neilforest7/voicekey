@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.3.3](https://github.com/neilforest7/voicekey/compare/v0.3.2...v0.3.3) (2026-04-19)
+
+### Bug Fixes
+
+- **asr:** clean up handshake listeners after socket open ([4c8f62b](https://github.com/neilforest7/voicekey/commit/4c8f62bcce007f2d227e5687872fc1d3dc954b00))
+
 ### [0.3.2](https://github.com/neilforest7/voicekey/compare/v0.3.1...v0.3.2) (2026-04-19)
 
 ### [0.3.1](https://github.com/neilforest7/voicekey/compare/v0.3.0...v0.3.1) (2026-04-19)
