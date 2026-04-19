@@ -86,15 +86,22 @@ jobs:
 
       - name: Resolve release notes
         id: resolve_notes
+        env:
+          NOTES_DISPATCH: ${{ steps.changelog_from_repo.outputs.notes }}
+          NOTES_TAG: ${{ steps.changelog_from_tag.outputs.notes }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "notes<<EOF" >> $GITHUB_OUTPUT
-            echo '${{ steps.changelog_from_repo.outputs.notes }}' >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
+            {
+              echo "notes<<NOTES_EOF"
+              echo "$NOTES_DISPATCH"
+              echo "NOTES_EOF"
+            } >> "$GITHUB_OUTPUT"
           else
-            echo "notes<<EOF" >> $GITHUB_OUTPUT
-            echo '${{ steps.changelog_from_tag.outputs.notes }}' >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
+            {
+              echo "notes<<NOTES_EOF"
+              echo "$NOTES_TAG"
+              echo "NOTES_EOF"
+            } >> "$GITHUB_OUTPUT"
           fi
 
   build-mac:
