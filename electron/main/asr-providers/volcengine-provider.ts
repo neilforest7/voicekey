@@ -407,15 +407,24 @@ export class VolcengineASRProvider implements ASRProvider {
 
       let settled = false
 
+      const cleanupOpenListeners = () => {
+        ws.removeAllListeners('open')
+        ws.removeAllListeners('error')
+        ws.removeAllListeners('close')
+        ws.removeAllListeners('unexpected-response')
+      }
+
       const resolveSocket = () => {
         if (settled) return
         settled = true
+        cleanupOpenListeners()
         resolve(ws)
       }
 
       const rejectSocket = (error: Error) => {
         if (settled) return
         settled = true
+        cleanupOpenListeners()
         reject(error)
       }
 
