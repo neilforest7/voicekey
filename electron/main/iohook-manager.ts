@@ -31,6 +31,8 @@ export class IOHookManager extends EventEmitter {
   private pressedKeys: Set<number> = new Set()
   private isListening = false
   private debug = false
+  private eventCount = 0
+  private healthInterval: ReturnType<typeof setInterval> | null = null
 
   constructor() {
     super()
@@ -49,9 +51,14 @@ export class IOHookManager extends EventEmitter {
       this.handleInput(e)
     })
 
-    uIOhook.start()
-    this.isListening = true
-    if (this.debug) console.log('[IOHook] Started')
+    try {
+      uIOhook.start()
+      this.isListening = true
+      console.log('[IOHook] Started successfully')
+      this.startHealthCheck()
+    } catch (error) {
+      console.error('[IOHook] Failed to start:', error)
+    }
   }
 
   stop() {
@@ -59,26 +66,40 @@ export class IOHookManager extends EventEmitter {
     uIOhook.stop()
     this.pressedKeys.clear()
     this.isListening = false
-    if (this.debug) console.log('[IOHook] Stopped')
+    this.stopHealthCheck()
+    console.log('[IOHook] Stopped')
+  }
+
+  private startHealthCheck() {
+    this.eventCount = 0
+    this.healthInterval = setInterval(() => {
+      console.log(
+        `[IOHook] Health: ${this.eventCount} events in last 30s, ` +
+          `listening=${this.isListening}, pressedKeys=[${Array.from(this.pressedKeys).join(',')}]`,
+      )
+      this.eventCount = 0
+    }, 30_000)
+  }
+
+  private stopHealthCheck() {
+    if (this.healthInterval) {
+      clearInterval(this.healthInterval)
+      this.healthInterval = null
+    }
   }
 
   private handleInput(e: UiohookKeyboardEvent) {
-    // We strictly only case about keyboard events 4 (keydown) and 5 (keyup)
-    // The type definition might be different depending on version, usually 4=down, 5=up
-
-    // uiohook-napi exposes e.type.
-    // 4 = KeyPressed (KeyDown)
-    // 5 = KeyReleased (KeyUp)
-
     if (e.type === 4) {
       // KeyDown
       this.pressedKeys.add(e.keycode)
+      this.eventCount++
       if (this.debug) console.log('[IOHook] KeyDown:', e.keycode, (UiohookKey as any)[e.keycode])
       this.emit('keydown', e.keycode)
       this.checkHotkeys()
     } else if (e.type === 5) {
       // KeyUp
       this.pressedKeys.delete(e.keycode)
+      this.eventCount++
       if (this.debug) console.log('[IOHook] KeyUp:', e.keycode, (UiohookKey as any)[e.keycode])
       this.emit('keyup', e.keycode)
     }

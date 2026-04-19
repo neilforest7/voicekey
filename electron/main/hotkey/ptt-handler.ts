@@ -14,6 +14,7 @@ type RegisterGlobalHotkeysOptions = {
 }
 
 let activeDebounceTimer: NodeJS.Timeout | null = null
+let lastPttState = false
 
 export function registerGlobalHotkeys(options: RegisterGlobalHotkeysOptions = {}): void {
   clearPendingDebounce()
@@ -30,6 +31,13 @@ export function registerGlobalHotkeys(options: RegisterGlobalHotkeysOptions = {}
     const checkPTT = () => {
       const isPressed = ioHookManager.isPressed(pttConfig.modifiers, pttConfig.key)
       const session = getCurrentSession()
+
+      if (isPressed !== lastPttState) {
+        console.log(
+          `[PTT] State changed: pressed=${isPressed}, session=${session?.status ?? 'none'}`,
+        )
+        lastPttState = isPressed
+      }
 
       if (isPressed && (!session || session.status !== 'recording') && !activeDebounceTimer) {
         activeDebounceTimer = setTimeout(() => {
@@ -79,4 +87,5 @@ export function clearPendingDebounce(): void {
     clearTimeout(activeDebounceTimer)
     activeDebounceTimer = null
   }
+  lastPttState = false
 }
