@@ -13,9 +13,9 @@ import { getBackgroundWindow } from '../window/background'
 import { hideOverlay, updateOverlay } from '../window/overlay'
 import { convertToMP3, convertToPCM } from './converter'
 import { clearSession, getCurrentSession, updateSession } from './session-manager'
-import type {
+import {
   VolcengineASRProvider,
-  StreamingTranscriptCallback,
+  type StreamingTranscriptCallback,
 } from '../asr-providers/volcengine-provider'
 
 type ProcessorDeps = {
@@ -502,12 +502,12 @@ export async function startStreamingSession(sessionId: string): Promise<void> {
   }
 
   const asrProvider = deps.getAsrProvider()
-  if (!asrProvider || asrProvider.constructor.name !== 'VolcengineASRProvider') {
+  if (!(asrProvider instanceof VolcengineASRProvider)) {
     console.error('[Audio:Processor] Volcengine ASR provider not available for streaming')
     return
   }
 
-  const volcProvider = asrProvider as VolcengineASRProvider
+  const volcProvider = asrProvider
 
   const sessionState: StreamingSessionState = {
     sessionId,
