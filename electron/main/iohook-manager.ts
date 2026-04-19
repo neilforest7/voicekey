@@ -30,7 +30,6 @@ const ALL_MODIFIER_KEYS: Set<number> = new Set([
 export class IOHookManager extends EventEmitter {
   private pressedKeys: Set<number> = new Set()
   private isListening = false
-  private debug = false
   private eventCount = 0
   private healthInterval: ReturnType<typeof setInterval> | null = null
 
@@ -38,10 +37,9 @@ export class IOHookManager extends EventEmitter {
     super()
   }
 
-  start(debug = false) {
+  start(_debug = false) {
     if (this.isListening) return
 
-    this.debug = debug
     this.pressedKeys.clear()
 
     uIOhook.on('keydown', (e: UiohookKeyboardEvent) => {
@@ -93,15 +91,46 @@ export class IOHookManager extends EventEmitter {
       // KeyDown
       this.pressedKeys.add(e.keycode)
       this.eventCount++
-      if (this.debug) console.log('[IOHook] KeyDown:', e.keycode, (UiohookKey as any)[e.keycode])
+      this.logIfPttRelated('KeyDown', e.keycode)
       this.emit('keydown', e.keycode)
       this.checkHotkeys()
     } else if (e.type === 5) {
       // KeyUp
       this.pressedKeys.delete(e.keycode)
       this.eventCount++
-      if (this.debug) console.log('[IOHook] KeyUp:', e.keycode, (UiohookKey as any)[e.keycode])
+      this.logIfPttRelated('KeyUp', e.keycode)
       this.emit('keyup', e.keycode)
+    }
+  }
+
+  private pttRelatedKeys: Set<number> | null = null
+
+  private logIfPttRelated(direction: string, keycode: number): void {
+    if (!this.pttRelatedKeys) {
+      const config = require('../config-manager').configManager.getHotkeyConfig()
+      const parsed = require('./parser').parseAccelerator(config.pttKey)
+      if (parsed) {
+        const keys = new Set<number>([parsed.key])
+        const MODS = {
+          SHIFT: new Set([UiohookKey.Shift, UiohookKey.ShiftRight]),
+          CTRL: new Set([UiohookKey.Ctrl, UiohookKey.CtrlRight]),
+          ALT: new Set([UiohookKey.Alt, UiohookKey.AltRight]),
+          META: new Set([UiohookKey.Meta, UiohookKey.MetaRight]),
+        }
+        for (const mod of parsed.modifiers) {
+          const set = MODS[mod.toUpperCase() as keyof typeof MODS]
+          if (set) for (const k of set) keys.add(k)
+        }
+        this.pttRelatedKeys = keys
+      }
+    }
+    if (this.pttRelatedKeys?.has(keycode)) {
+      console.log(
+        `[IOHook] ${direction} keycode=0x${keycode.toString(16).toUpperCase()} ` +
+          `pressedKeys=[${Array.from(this.pressedKeys)
+            .map((k) => `0x${k.toString(16).toUpperCase()}`)
+            .join(',')}]`,
+      )
     }
   }
 
