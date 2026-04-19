@@ -1,4 +1,10 @@
-import { uIOhook, UiohookKey, UiohookKeyboardEvent } from 'uiohook-napi'
+import { createRequire } from 'node:module'
+
+const { uIOhook, UiohookKey } = createRequire(import.meta.url)(
+  'uiohook-napi',
+) as typeof import('uiohook-napi')
+export { UiohookKey }
+import type { UiohookKeyboardEvent } from 'uiohook-napi'
 import { EventEmitter } from 'events'
 
 // Define supported modifiers

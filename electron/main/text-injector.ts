@@ -1,6 +1,12 @@
 import { clipboard, type NativeImage } from 'electron'
-import { keyboard, Key } from '@nut-tree-fork/nut-js'
+import { createRequire } from 'node:module'
 import { createHash } from 'node:crypto'
+import type { Key } from '@nut-tree-fork/nut-js'
+
+const nutJs = createRequire(import.meta.url)(
+  '@nut-tree-fork/nut-js',
+) as typeof import('@nut-tree-fork/nut-js')
+const { keyboard, Key: KeyVal } = nutJs
 
 type ClipboardSnapshot = {
   text?: string
@@ -164,8 +170,8 @@ export class TextInjector {
     try {
       clipboard.writeText(text)
       await this.delay(50)
-      await keyboard.pressKey(modifierKey, Key.V)
-      await keyboard.releaseKey(modifierKey, Key.V)
+      await keyboard.pressKey(modifierKey, KeyVal.V)
+      await keyboard.releaseKey(modifierKey, KeyVal.V)
       await this.delay(50)
     } finally {
       this.restoreClipboard(snapshot)
@@ -173,7 +179,7 @@ export class TextInjector {
   }
 
   private getPasteModifierKey(): Key {
-    return process.platform === 'darwin' ? Key.LeftCmd : Key.LeftControl
+    return process.platform === 'darwin' ? KeyVal.LeftCmd : KeyVal.LeftControl
   }
 
   private hasLineBreaks(text: string): boolean {

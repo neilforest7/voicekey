@@ -1,4 +1,4 @@
-import { UiohookKey } from 'uiohook-napi'
+import { UiohookKey } from '../iohook-manager'
 
 /**
  * 将 Electron Accelerator 格式字符串解析为 uiohook 参数
