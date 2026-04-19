@@ -1,23 +1,38 @@
-import { createRequire } from 'node:module'
+/**
+ * IOHook Manager
+ *
+ * Manages the uiohook-napi keyboard hook via an isolated utility process.
+ * This avoids Electron bug #33976 where getUserMedia() breaks
+ * SetWindowsHookEx(WH_KEYBOARD_LL) cross-process keyboard capture on Windows.
+ *
+ * The utility process (hook-worker.ts) runs uIOhook directly and sends
+ * keydown/keyup events via IPC. This manager exposes the same EventEmitter
+ * API as before, tracking pressed keys for the PTT isPressed() check.
+ */
 
-const { uIOhook, UiohookKey } = createRequire(import.meta.url)(
-  'uiohook-napi',
-) as typeof import('uiohook-napi')
-export { UiohookKey }
-import type { UiohookKeyboardEvent } from 'uiohook-napi'
+import { createRequire } from 'node:module'
+import { utilityProcess } from 'electron'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { EventEmitter } from 'events'
 import { configManager } from './config-manager'
 import { parseAccelerator } from './hotkey/parser'
 
-// Define supported modifiers
+// Only load UiohookKey constants (no hook runtime side effects)
+const { UiohookKey } = createRequire(import.meta.url)(
+  'uiohook-napi',
+) as typeof import('uiohook-napi')
+export { UiohookKey }
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+
 const MODIFIERS = {
   SHIFT: new Set([UiohookKey.Shift, UiohookKey.ShiftRight]),
   CTRL: new Set([UiohookKey.Ctrl, UiohookKey.CtrlRight]),
   ALT: new Set([UiohookKey.Alt, UiohookKey.AltRight]),
-  META: new Set([UiohookKey.Meta, UiohookKey.MetaRight]), // Command on Mac, Windows key on Win
+  META: new Set([UiohookKey.Meta, UiohookKey.MetaRight]),
 }
 
-// All modifier keys for exact match checking
 const ALL_MODIFIER_KEYS: Set<number> = new Set([
   UiohookKey.Shift,
   UiohookKey.ShiftRight,
@@ -29,91 +44,79 @@ const ALL_MODIFIER_KEYS: Set<number> = new Set([
   UiohookKey.MetaRight,
 ])
 
+type WorkerMessage =
+  | { type: 'keydown'; keycode: number }
+  | { type: 'keyup'; keycode: number }
+  | { type: 'started'; ok: boolean; error?: string }
+  | { type: 'stopped' }
+
 export class IOHookManager extends EventEmitter {
   private pressedKeys: Set<number> = new Set()
   private isListening = false
-  private eventCount = 0
-  private healthInterval: ReturnType<typeof setInterval> | null = null
-  private uniqueKeycodes: Set<number> = new Set()
+  private child: Electron.UtilityProcess | null = null
+  private pttRelatedKeys: Set<number> | null = null
 
-  constructor() {
-    super()
-  }
-
-  start(_debug = false) {
+  start() {
     if (this.isListening) return
 
-    this.pressedKeys.clear()
+    const workerPath = path.join(__dirname, 'hook-worker.mjs')
+    console.log('[IOHook] Forking utility process:', workerPath)
 
-    uIOhook.on('keydown', (e: UiohookKeyboardEvent) => {
-      this.handleInput(e)
-    })
-    uIOhook.on('keyup', (e: UiohookKeyboardEvent) => {
-      this.handleInput(e)
+    this.child = utilityProcess.fork(workerPath, [], {
+      serviceName: 'hook-worker',
+      allowLoadingNativeModules: true,
+    } as Electron.ForkOptions & { allowLoadingNativeModules?: boolean })
+
+    this.child.on('message', (msg: WorkerMessage) => {
+      this.handleWorkerMessage(msg)
     })
 
-    try {
-      uIOhook.start()
-      this.isListening = true
-      console.log('[IOHook] Started successfully')
-      this.startHealthCheck()
-    } catch (error) {
-      console.error('[IOHook] Failed to start:', error)
-    }
+    this.child.on('exit', (code) => {
+      console.log(`[IOHook] Utility process exited with code ${code}`)
+      this.isListening = false
+      this.child = null
+    })
+
+    this.child.postMessage({ type: 'start' })
   }
 
   stop() {
-    if (!this.isListening) return
-    uIOhook.stop()
+    if (!this.child) return
+    this.child.postMessage({ type: 'stop' })
     this.pressedKeys.clear()
     this.isListening = false
-    this.stopHealthCheck()
+    setTimeout(() => {
+      this.child?.kill()
+      this.child = null
+    }, 1000)
     console.log('[IOHook] Stopped')
   }
 
-  private startHealthCheck() {
-    this.eventCount = 0
-    this.uniqueKeycodes.clear()
-    this.healthInterval = setInterval(() => {
-      const codes = Array.from(this.uniqueKeycodes)
-        .map((k) => `0x${k.toString(16).toUpperCase()}`)
-        .join(',')
-      console.log(
-        `[IOHook] Health: ${this.eventCount} events, ` +
-          `listening=${this.isListening}, uniqueKeydowns=[${codes}], ` +
-          `pressedKeys=[${Array.from(this.pressedKeys).join(',')}]`,
-      )
-      this.eventCount = 0
-      this.uniqueKeycodes.clear()
-    }, 30_000)
-  }
-
-  private stopHealthCheck() {
-    if (this.healthInterval) {
-      clearInterval(this.healthInterval)
-      this.healthInterval = null
+  private handleWorkerMessage(msg: WorkerMessage) {
+    switch (msg.type) {
+      case 'keydown':
+        this.pressedKeys.add(msg.keycode)
+        this.logIfPttRelated('KeyDown', msg.keycode)
+        this.emit('keydown', msg.keycode)
+        break
+      case 'keyup':
+        this.pressedKeys.delete(msg.keycode)
+        this.logIfPttRelated('KeyUp', msg.keycode)
+        this.emit('keyup', msg.keycode)
+        break
+      case 'started':
+        if (msg.ok) {
+          this.isListening = true
+          console.log('[IOHook] Utility process started successfully')
+        } else {
+          console.error('[IOHook] Utility process failed to start:', msg.error)
+        }
+        break
+      case 'stopped':
+        console.log('[IOHook] Utility process stopped')
+        break
     }
   }
-
-  private handleInput(e: UiohookKeyboardEvent) {
-    if (e.type === 4) {
-      // KeyDown
-      this.pressedKeys.add(e.keycode)
-      this.eventCount++
-      this.uniqueKeycodes.add(e.keycode)
-      this.logIfPttRelated('KeyDown', e.keycode)
-      this.emit('keydown', e.keycode)
-      this.checkHotkeys()
-    } else if (e.type === 5) {
-      // KeyUp
-      this.pressedKeys.delete(e.keycode)
-      this.eventCount++
-      this.logIfPttRelated('KeyUp', e.keycode)
-      this.emit('keyup', e.keycode)
-    }
-  }
-
-  private pttRelatedKeys: Set<number> | null = null
 
   private logIfPttRelated(direction: string, keycode: number): void {
     if (!this.pttRelatedKeys) {
@@ -144,47 +147,16 @@ export class IOHookManager extends EventEmitter {
     }
   }
 
-  private checkHotkeys() {
-    // This is where we could trigger 'hotkey-down' events
-    // For PTT, we might want to let the main process handle the logic by querying checking state
-    // But emitting a specific event is cleaner.
-    // For now, we exposes an API to check if a specific combination is pressed.
-  }
-
-  /**
-   * 检查指定的快捷键组合是否"当前正被按住"
-   *
-   * 这是 PTT（Push-To-Talk）功能的核心状态检测器，用于判断录音何时开始、何时停止。
-   * 在 main.ts 的 checkPTT() 回调中被调用，每次键盘事件（keydown/keyup）都会触发检测。
-   *
-   * @param modifiers - 需要按住的修饰键数组，如 ['meta', 'shift']
-   * @param key - 需要按住的主键 keycode，如 UiohookKey.Space (57)
-   * @returns true = 用户正在按住配置的快捷键组合；false = 未按住或已松开
-   *
-   * @example
-   * // 检查 Command+Space 是否被按住
-   * const isPressed = ioHookManager.isPressed(['meta'], UiohookKey.Space)
-   * if (isPressed) handleStartRecording()
-   * else handleStopRecording()
-   */
   isPressed(modifiers: string[], key: number): boolean {
-    // 1. Check main key is pressed
     if (!this.pressedKeys.has(key)) return false
 
-    // 2. Check all required modifiers are pressed
     for (const mod of modifiers) {
       if (!this.hasModifier(mod)) return false
     }
 
-    // 3. Check no extra modifiers are pressed (exact match)
-    // Get all keycodes that belong to the required modifiers
     const requiredModifierKeys = this.getRequiredModifierKeys(modifiers)
-
     for (const pressedKey of this.pressedKeys) {
-      // Skip the main key
       if (pressedKey === key) continue
-
-      // If a pressed key is a modifier key but NOT in the required set, reject
       if (ALL_MODIFIER_KEYS.has(pressedKey) && !requiredModifierKeys.has(pressedKey)) {
         return false
       }
@@ -193,8 +165,6 @@ export class IOHookManager extends EventEmitter {
     return true
   }
 
-  // Get all keycodes that belong to the specified modifiers
-  // e.g., ['shift', 'meta'] -> Set { Shift, ShiftRight, Meta, MetaRight }
   private getRequiredModifierKeys(modifiers: string[]): Set<number> {
     const keys = new Set<number>()
     for (const mod of modifiers) {
@@ -211,8 +181,6 @@ export class IOHookManager extends EventEmitter {
   private hasModifier(mod: string): boolean {
     const modSet = MODIFIERS[mod.toUpperCase() as keyof typeof MODIFIERS]
     if (!modSet) return false
-
-    // Check if any key in the modifier set is pressed
     for (const key of modSet) {
       if (this.pressedKeys.has(key)) return true
     }

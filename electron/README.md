@@ -22,6 +22,10 @@
 
 `contextBridge` 安全桥，向渲染进程暴露 `window.electronAPI`。
 
+### `utility/`
+
+独立 utility process 脚本，用于运行 uiohook-napi 键盘钩子。隔离自主进程以避免 Electron getUserMedia() bug（#33976）破坏 WH_KEYBOARD_LL 跨进程键盘捕获。
+
 ### `shared/`
 
 跨进程共享类型、常量与本地化资源。
