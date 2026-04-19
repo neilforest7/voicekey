@@ -159,6 +159,7 @@ export interface OverlayState {
   message?: string
   processingStage?: OverlayProcessingStage
   processingTotalStages?: 1 | 2
+  transcriptionPreview?: string
 }
 
 export type IPCChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS]

@@ -145,6 +145,7 @@ export async function handleStopRecording(options: HandleStopRecordingOptions = 
         status: 'processing',
         processingStage: options.willRunRefine ? 'refining' : 'transcribing',
         processingTotalStages: options.willRunRefine ? 2 : 1,
+        transcriptionPreview: '',
       })
 
       const bgWindow = getBackgroundWindow()

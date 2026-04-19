@@ -503,6 +503,11 @@ export async function startStreamingSession(sessionId: string): Promise<void> {
 
     sessionState.latestText = text
 
+    updateOverlay({
+      status: 'recording',
+      transcriptionPreview: text,
+    })
+
     if (isFinal) {
       sessionState.finalized = true
       console.log('[Audio:Processor] Streaming session finalized, resolving promise')

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Check, Mic, X, Zap } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { OverlayProcessingStage, OverlayState } from '../../electron/shared/types'
@@ -12,6 +12,21 @@ export function HUD() {
   const [audioLevel, setAudioLevel] = useState(0)
   const [isVisible, setIsVisible] = useState(false)
   const [isHovered, setIsHovered] = useState(false)
+  const previewScrollerRef = useRef<HTMLDivElement | null>(null)
+
+  const previewText = overlayState.transcriptionPreview?.trim() ?? ''
+
+  useEffect(() => {
+    const scroller = previewScrollerRef.current
+    if (!scroller || !previewText) {
+      return
+    }
+
+    scroller.scrollTo({
+      left: scroller.scrollWidth,
+      behavior: 'smooth',
+    })
+  }, [previewText])
 
   useEffect(() => {
     document.documentElement.classList.add('overlay-html')
@@ -117,10 +132,29 @@ export function HUD() {
                 {status === 'error' && <X className="h-3.5 w-3.5" strokeWidth={3} />}
               </div>
 
-              <div className="flex min-h-[40px] flex-1 flex-col justify-center items-center overflow-hidden px-1">
+              <div className="flex min-h-[40px] flex-1 flex-col items-center justify-center overflow-hidden px-1">
                 {status === 'recording' && (
-                  <div className="flex w-full items-center justify-center gap-3">
-                    <Waveform audioLevel={audioLevel} />
+                  <div className="relative flex h-8 w-full items-center justify-center overflow-hidden">
+                    <div
+                      className={`relative z-0 flex w-full items-center justify-center gap-3 transition-opacity duration-300 ease-out ${
+                        previewText ? 'opacity-15' : 'opacity-100'
+                      }`}
+                    >
+                      <Waveform audioLevel={audioLevel} />
+                    </div>
+                    <div className="pointer-events-none absolute inset-0 z-10 flex items-center px-4 text-[11px] font-medium text-white/75">
+                      <div className="relative w-full overflow-hidden">
+                        <div
+                          ref={previewScrollerRef}
+                          className="overflow-x-hidden whitespace-nowrap"
+                        >
+                          <span className="inline-block pr-8 align-middle">
+                            {previewText || ' '}
+                          </span>
+                        </div>
+                        <div className="absolute inset-y-0 left-0 z-10 w-5 bg-linear-to-r from-neutral-900/90 to-transparent" />
+                      </div>
+                    </div>
                   </div>
                 )}
 
@@ -130,7 +164,7 @@ export function HUD() {
                       <div className="text-sm font-medium text-white">
                         {getProcessingTitle(processingStage)}
                       </div>
-                      <div className="flex items-center justify-center gap-2 w-full">
+                      <div className="flex w-full items-center justify-center gap-2">
                         {visibleProcessingSteps.map((step, index) => {
                           const isCurrent = step === processingStage
                           const isCompleted = currentProcessingIndex > index
