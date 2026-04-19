@@ -34,6 +34,7 @@ export class IOHookManager extends EventEmitter {
   private isListening = false
   private eventCount = 0
   private healthInterval: ReturnType<typeof setInterval> | null = null
+  private uniqueKeycodes: Set<number> = new Set()
 
   constructor() {
     super()
@@ -72,12 +73,18 @@ export class IOHookManager extends EventEmitter {
 
   private startHealthCheck() {
     this.eventCount = 0
+    this.uniqueKeycodes.clear()
     this.healthInterval = setInterval(() => {
+      const codes = Array.from(this.uniqueKeycodes)
+        .map((k) => `0x${k.toString(16).toUpperCase()}`)
+        .join(',')
       console.log(
-        `[IOHook] Health: ${this.eventCount} events in last 30s, ` +
-          `listening=${this.isListening}, pressedKeys=[${Array.from(this.pressedKeys).join(',')}]`,
+        `[IOHook] Health: ${this.eventCount} events, ` +
+          `listening=${this.isListening}, uniqueKeydowns=[${codes}], ` +
+          `pressedKeys=[${Array.from(this.pressedKeys).join(',')}]`,
       )
       this.eventCount = 0
+      this.uniqueKeycodes.clear()
     }, 30_000)
   }
 
@@ -93,6 +100,7 @@ export class IOHookManager extends EventEmitter {
       // KeyDown
       this.pressedKeys.add(e.keycode)
       this.eventCount++
+      this.uniqueKeycodes.add(e.keycode)
       this.logIfPttRelated('KeyDown', e.keycode)
       this.emit('keydown', e.keycode)
       this.checkHotkeys()
