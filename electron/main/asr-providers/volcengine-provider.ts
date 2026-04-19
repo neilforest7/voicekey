@@ -188,7 +188,6 @@ export class VolcengineASRProvider implements ASRProvider {
 
       const cleanup = () => {
         ws.removeAllListeners('message')
-        ws.removeAllListeners('error')
         ws.removeAllListeners('close')
       }
 
@@ -231,7 +230,10 @@ export class VolcengineASRProvider implements ASRProvider {
         }
       })
 
-      ws.on('error', (error: Error) => fail(error))
+      ws.on('error', (error: Error) => {
+        if (settled) return
+        fail(error)
+      })
       ws.on('close', () => {
         if (!settled) {
           if (latestText) {
@@ -300,7 +302,6 @@ export class VolcengineASRProvider implements ASRProvider {
 
       const cleanup = () => {
         ws.removeAllListeners('message')
-        ws.removeAllListeners('error')
         ws.removeAllListeners('close')
       }
 
@@ -333,7 +334,10 @@ export class VolcengineASRProvider implements ASRProvider {
           fail(error instanceof Error ? error : new Error('Invalid Volcengine response'))
         }
       })
-      ws.once('error', (error: Error) => fail(error))
+      ws.on('error', (error: Error) => {
+        if (settled) return
+        fail(error)
+      })
       ws.once('close', (code: number, reason: Buffer) => {
         if (code === 1000) {
           finish()
@@ -403,30 +407,24 @@ export class VolcengineASRProvider implements ASRProvider {
 
       let settled = false
 
-      const cleanup = () => {
-        ws.removeAllListeners('open')
-        ws.removeAllListeners('error')
-        ws.removeAllListeners('close')
-        ws.removeAllListeners('unexpected-response')
-      }
-
       const resolveSocket = () => {
         if (settled) return
         settled = true
-        cleanup()
         resolve(ws)
       }
 
       const rejectSocket = (error: Error) => {
         if (settled) return
         settled = true
-        cleanup()
         reject(error)
       }
 
-      ws.once('open', () => resolveSocket())
+      // Use on() + settled guard instead of once() + cleanup().
+      // ws timeout emits 'close' then 'error' synchronously — once('close')
+      // would remove the error listener before it fires.
+      ws.once('open', resolveSocket)
 
-      ws.once('error', (error: Error) => rejectSocket(error))
+      ws.on('error', (error: Error) => rejectSocket(error))
       ws.once('close', (code: number, reason: Buffer) => {
         rejectSocket(new Error(`Volcengine socket closed: ${code} ${reason.toString()}`))
       })
