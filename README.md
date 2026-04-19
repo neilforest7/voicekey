@@ -56,8 +56,8 @@
 
 ## 主要功能 <a id="about-the-project"></a>
 
-- **语音转写**: 集成 GLM ASR，实现高精度语音转文字。
-- **文本润色**: 支持基于 OpenAI-compatible 接口的轻量后处理。
+- **语音转写**: 支持 GLM ASR 与火山引擎流式语音识别 2.0。
+- **文本润色**: 默认使用智谱 OpenAI-compatible 接口（可改为其他兼容接口）做轻量后处理。
 - **文本注入**: 转写完成后可直接注入到当前焦点输入框。
 - **桌面工作流**: 提供全局快捷键、HUD、日志和更新检查能力。
 
@@ -113,10 +113,11 @@ npm run dev
 
 ## 配置要求 <a id="prerequisites"></a>
 
-本应用依赖 **智谱 AI (GLM)** 的语音转写服务，使用前需要先配置 API Key。
+本应用支持 **智谱 AI (GLM)** 与 **火山引擎流式语音识别 2.0** 作为语音转写服务，使用前需要先在设置页完成对应凭证配置。
 
-1. **获取 API Key**: 访问智谱 AI 开放平台 [中国站](https://bigmodel.cn/usercenter/proj-mgmt/apikeys) 或 [国际站](https://z.ai/manage-apikey/apikey-list) 注册并获取 Key。
-2. **完成配置**: 打开 Voice Key 设置页，填入你的 API Key。
+1. **GLM**：访问智谱 AI 开放平台 [中国站](https://bigmodel.cn/usercenter/proj-mgmt/apikeys) 或 [国际站](https://z.ai/manage-apikey/apikey-list) 获取 API Key。
+2. **火山引擎**：在火山引擎语音识别控制台准备 App Key、Access Key 与 Resource ID。
+3. **完成配置**：打开 Voice Key 设置页，选择识别服务并填入对应凭证；文本润色默认预置智谱 Base URL 与模型，通常只需补充 API Key。
 
 ## macOS 安装指南 <a id="installation"></a>
 

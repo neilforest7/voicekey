@@ -8,22 +8,29 @@ export interface VoiceSession {
   transcription?: string
   error?: string
   duration?: number
+  maxAudioLevel?: number
+  speechDetected?: boolean
 }
 
 export interface ASRConfig {
-  provider: 'glm'
-  region: 'cn' | 'intl'
-  apiKeys: {
-    cn: string
-    intl: string
-  }
+  provider: 'glm' | 'volcengine'
   lowVolumeMode?: boolean
-
-  // Deprecated: for backward compatibility during migration
-  apiKey?: string
-
-  endpoint?: string
+  streamingMode?: boolean
   language?: string
+  glm: {
+    region: 'cn' | 'intl'
+    apiKeys: {
+      cn: string
+      intl: string
+    }
+    endpoint?: string
+  }
+  volcengine: {
+    appKey: string
+    accessKey: string
+    resourceId: string
+    endpoint?: string
+  }
 }
 
 export interface LLMRefineConfig {
@@ -92,6 +99,8 @@ export interface RefineConnectionResult {
 
 export interface RecordingStartPayload {
   sessionId: string
+  streamingMode?: boolean
+  lowVolumeMode?: boolean
 }
 
 export interface AudioChunkPayload {

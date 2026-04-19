@@ -1,6 +1,6 @@
-﻿import { app, BrowserWindow, Menu, nativeImage } from 'electron'
+import { app, BrowserWindow, Menu, nativeImage } from 'electron'
 import path from 'node:path'
-import { ASRProvider } from './asr-provider'
+import { createASRProvider, type ASRProvider } from './asr-provider'
 import { RefineService } from './refine'
 // 配置管理模块
 import { configManager } from './config-manager'
@@ -42,11 +42,12 @@ import { initIPCHandlers, registerAllIPCHandlers } from './ipc'
 // Audio 模块
 import {
   // Session Manager
-  handleStartRecording,
-  handleStopRecording,
+  handleStartRecording as handleStartRecordingImpl,
+  handleStopRecording as handleStopRecordingImpl,
   handleAudioChunk,
   handleCancelSession,
   getCurrentSession,
+  recordSessionAudioLevel,
   setSessionError,
   // Processor
   initProcessor,
@@ -101,7 +102,7 @@ function shouldOpenSettingsWindowOnLaunch(): boolean {
 // 初始化ASR Provider
 function initializeASRProvider() {
   const config = configManager.getASRConfig()
-  asrProvider = new ASRProvider(config)
+  asrProvider = createASRProvider(config)
 }
 
 // 初始化文本润色服务
@@ -193,20 +194,39 @@ app.whenReady().then(async () => {
     // session-handlers 依赖
     session: {
       // 这些现在直接从 audio/ 模块导入
-      handleStartRecording,
-      handleStopRecording: () =>
-        handleStopRecording({
+      handleStartRecording: () => {
+        const asrConfig = configManager.getASRConfig()
+        console.log(
+          '[Main] WRAPPER handleStartRecording: config=',
+          JSON.stringify({ streamingMode: asrConfig.streamingMode, provider: asrConfig.provider }),
+        )
+        return handleStartRecordingImpl(asrConfig)
+      },
+      handleStopRecording: () => {
+        const asrConfig = configManager.getASRConfig()
+        console.log(
+          '[Main] WRAPPER handleStopRecording: config=',
+          JSON.stringify({ streamingMode: asrConfig.streamingMode, provider: asrConfig.provider }),
+        )
+        return handleStopRecordingImpl({
           willRunRefine: willRunRefine(),
-        }),
+          asrConfig,
+        })
+      },
       handleAudioChunk,
       handleCancelSession,
       getCurrentSession,
+      isStreamingMode: () => {
+        const config = configManager.getASRConfig()
+        return Boolean(config.streamingMode && config.provider === 'volcengine')
+      },
     },
 
     // overlay-handlers 依赖
     overlay: {
       showNotification,
       getCurrentSession, // 同样从 audio/ 导入
+      recordSessionAudioLevel,
       setSessionError, // 同样从 audio/ 导入
     },
   })

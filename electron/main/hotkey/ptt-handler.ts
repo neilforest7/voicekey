@@ -2,7 +2,11 @@ import { configManager } from '../config-manager'
 import { hotkeyManager } from '../hotkey-manager'
 import { ioHookManager } from '../iohook-manager'
 import { createSettingsWindow } from '../window'
-import { handleStartRecording, handleStopRecording, getCurrentSession } from '../audio'
+import {
+  handleStartRecording,
+  handleStopRecording,
+  getCurrentSession,
+} from '../audio/session-manager'
 import { parseAccelerator } from './parser'
 
 type RegisterGlobalHotkeysOptions = {
@@ -36,7 +40,12 @@ export function registerGlobalHotkeys(options: RegisterGlobalHotkeysOptions = {}
         debounceTimer = setTimeout(() => {
           // 再次检查是否仍然精确匹配
           if (ioHookManager.isPressed(pttConfig.modifiers, pttConfig.key)) {
-            handleStartRecording()
+            const asrConfig = configManager.getASRConfig()
+            console.log('[PTT] Starting recording with config:', {
+              streamingMode: asrConfig.streamingMode,
+              provider: asrConfig.provider,
+            })
+            handleStartRecording(asrConfig)
           }
           debounceTimer = null
         }, DEBOUNCE_MS)
@@ -50,8 +59,14 @@ export function registerGlobalHotkeys(options: RegisterGlobalHotkeysOptions = {}
 
       // Stop Recording
       if (!isPressed && session && session.status === 'recording') {
+        const asrConfig = configManager.getASRConfig()
+        console.log('[PTT] Stopping recording with config:', {
+          streamingMode: asrConfig.streamingMode,
+          provider: asrConfig.provider,
+        })
         handleStopRecording({
           willRunRefine: options.getWillRunRefine?.() ?? false,
+          asrConfig,
         })
       }
     }

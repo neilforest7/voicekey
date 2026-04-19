@@ -20,7 +20,7 @@ import {
 } from '../../shared/types'
 import { configManager } from '../config-manager'
 import { broadcastLanguageSnapshot, getMainLanguageSnapshot, setMainLanguage } from '../i18n'
-import { ASRProvider } from '../asr-provider'
+import { createASRProvider, type ASRProvider } from '../asr-provider'
 import { hotkeyManager } from '../hotkey-manager'
 import { ioHookManager } from '../iohook-manager'
 import type { TextRefiner } from '../refine'
@@ -119,7 +119,7 @@ export function registerConfigHandlers(): void {
   // CONFIG_TEST: 校验 ASR 连接
   ipcMain.handle(IPC_CHANNELS.CONFIG_TEST, async (_event, config?: ASRConfig) => {
     if (config) {
-      const tempProvider = new ASRProvider(config)
+      const tempProvider = createASRProvider(config)
       return await tempProvider.testConnection()
     }
     const asrProvider = deps.getAsrProvider()

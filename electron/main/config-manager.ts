@@ -50,13 +50,22 @@ const defaultConfig: AppConfig = {
   },
   asr: {
     provider: 'glm',
-    region: 'cn',
-    apiKeys: {
-      cn: '',
-      intl: '',
+    glm: {
+      region: 'cn',
+      apiKeys: {
+        cn: '',
+        intl: '',
+      },
+      endpoint: '',
+    },
+    volcengine: {
+      appKey: '',
+      accessKey: '',
+      resourceId: '',
+      endpoint: '',
     },
     lowVolumeMode: true,
-    endpoint: '',
+    streamingMode: false,
     language: 'auto',
   },
   llmRefine: defaultLLMRefineConfig,
@@ -75,8 +84,15 @@ function normalizeLLMRefineConfig(config?: Partial<LLMRefineConfig>): LLMRefineC
   return {
     ...defaultLLMRefineConfig,
     enabled: typeof config?.enabled === 'boolean' ? config.enabled : defaultLLMRefineConfig.enabled,
-    endpoint: normalizeRefineBaseUrl(config?.endpoint ?? defaultLLMRefineConfig.endpoint),
-    model: config?.model ?? defaultLLMRefineConfig.model,
+    endpoint: normalizeRefineBaseUrl(
+      typeof config?.endpoint === 'string' && config.endpoint.trim().length > 0
+        ? config.endpoint
+        : defaultLLMRefineConfig.endpoint,
+    ),
+    model:
+      typeof config?.model === 'string' && config.model.trim().length > 0
+        ? config.model
+        : defaultLLMRefineConfig.model,
     apiKey: config?.apiKey ?? defaultLLMRefineConfig.apiKey,
     translateToEnglish: readTranslateToEnglishFlag(rawConfig),
   }
@@ -136,6 +152,95 @@ function migrateLLMRefineConfig(config: unknown): LLMRefineConfig | null {
   return null
 }
 
+function normalizeASRConfig(config?: Partial<ASRConfig> | Record<string, unknown>): ASRConfig {
+  const rawConfig =
+    config && typeof config === 'object'
+      ? (config as Partial<ASRConfig> & Record<string, unknown>)
+      : {}
+
+  const glm = rawConfig.glm
+  const rawGlm = glm && typeof glm === 'object' ? (glm as Record<string, unknown>) : {}
+
+  const volcengine = rawConfig.volcengine
+  const rawVolcengine =
+    volcengine && typeof volcengine === 'object' ? (volcengine as Record<string, unknown>) : {}
+
+  const legacyApiKeys =
+    rawConfig.apiKeys && typeof rawConfig.apiKeys === 'object'
+      ? (rawConfig.apiKeys as Record<string, unknown>)
+      : {}
+
+  const provider = rawConfig.provider === 'volcengine' ? 'volcengine' : 'glm'
+
+  return {
+    provider,
+    lowVolumeMode:
+      typeof rawConfig.lowVolumeMode === 'boolean'
+        ? rawConfig.lowVolumeMode
+        : defaultConfig.asr.lowVolumeMode,
+    streamingMode:
+      typeof rawConfig.streamingMode === 'boolean'
+        ? rawConfig.streamingMode
+        : defaultConfig.asr.streamingMode,
+    language:
+      typeof rawConfig.language === 'string' ? rawConfig.language : defaultConfig.asr.language,
+    glm: {
+      region:
+        rawGlm.region === 'intl' || rawConfig.region === 'intl'
+          ? 'intl'
+          : defaultConfig.asr.glm.region,
+      apiKeys: {
+        cn:
+          typeof rawGlm.apiKeys === 'object' && rawGlm.apiKeys && 'cn' in rawGlm.apiKeys
+            ? String((rawGlm.apiKeys as Record<string, unknown>).cn ?? '')
+            : typeof legacyApiKeys.cn === 'string'
+              ? legacyApiKeys.cn
+              : '',
+        intl:
+          typeof rawGlm.apiKeys === 'object' && rawGlm.apiKeys && 'intl' in rawGlm.apiKeys
+            ? String((rawGlm.apiKeys as Record<string, unknown>).intl ?? '')
+            : typeof legacyApiKeys.intl === 'string'
+              ? legacyApiKeys.intl
+              : '',
+      },
+      endpoint:
+        typeof rawGlm.endpoint === 'string'
+          ? rawGlm.endpoint
+          : typeof rawConfig.endpoint === 'string'
+            ? rawConfig.endpoint
+            : defaultConfig.asr.glm.endpoint,
+    },
+    volcengine: {
+      appKey:
+        typeof rawVolcengine.appKey === 'string'
+          ? rawVolcengine.appKey
+          : typeof rawVolcengine.appId === 'string'
+            ? rawVolcengine.appId
+            : typeof rawConfig.appKey === 'string'
+              ? rawConfig.appKey
+              : typeof rawConfig.appId === 'string'
+                ? rawConfig.appId
+                : defaultConfig.asr.volcengine.appKey,
+      accessKey:
+        typeof rawVolcengine.accessKey === 'string'
+          ? rawVolcengine.accessKey
+          : typeof rawConfig.accessKey === 'string'
+            ? rawConfig.accessKey
+            : defaultConfig.asr.volcengine.accessKey,
+      resourceId:
+        typeof rawVolcengine.resourceId === 'string'
+          ? rawVolcengine.resourceId
+          : typeof rawConfig.resourceId === 'string'
+            ? rawConfig.resourceId
+            : defaultConfig.asr.volcengine.resourceId,
+      endpoint:
+        typeof rawVolcengine.endpoint === 'string'
+          ? rawVolcengine.endpoint
+          : defaultConfig.asr.volcengine.endpoint,
+    },
+  }
+}
+
 export class ConfigManager {
   private store: Store<ConfigSchema>
 
@@ -179,13 +284,8 @@ export class ConfigManager {
 
   private migrate(): void {
     const asrConfig = this.store.get('asr') as unknown as Record<string, unknown> | undefined
-    if (asrConfig?.apiKey) {
-      const currentApiKeys = this.store.get('asr.apiKeys', { cn: '', intl: '' })
-      if (!currentApiKeys.cn) {
-        this.store.set('asr.apiKeys.cn', asrConfig.apiKey)
-        this.store.delete('asr.apiKey' as never)
-      }
-    }
+    const migratedAsrConfig = normalizeASRConfig(asrConfig)
+    this.store.set('asr', migratedAsrConfig)
 
     if (
       asrConfig &&
@@ -193,6 +293,14 @@ export class ConfigManager {
       !Object.prototype.hasOwnProperty.call(asrConfig, 'lowVolumeMode')
     ) {
       this.store.set('asr.lowVolumeMode', false)
+    }
+
+    if (
+      asrConfig &&
+      typeof asrConfig === 'object' &&
+      !Object.prototype.hasOwnProperty.call(asrConfig, 'streamingMode')
+    ) {
+      this.store.set('asr.streamingMode', false)
     }
 
     const llmRefineConfig = this.store.get('llmRefine')
@@ -206,14 +314,31 @@ export class ConfigManager {
   migrateApiKeysEncryption(): void {
     if (!safeStorage.isEncryptionAvailable()) return
 
-    const apiKeys = this.store.get('asr.apiKeys', { cn: '', intl: '' })
+    const asr = normalizeASRConfig(this.store.get('asr', defaultConfig.asr))
+    const apiKeys = asr.glm.apiKeys
     for (const region of ['cn', 'intl'] as const) {
       const key = apiKeys[region]
       if (key && !key.startsWith(ENCRYPTED_PREFIX)) {
         apiKeys[region] = this.encryptKey(key)
       }
     }
-    this.store.set('asr.apiKeys', apiKeys)
+
+    let volcengineAccessKey = asr.volcengine.accessKey
+    if (volcengineAccessKey && !volcengineAccessKey.startsWith(ENCRYPTED_PREFIX)) {
+      volcengineAccessKey = this.encryptKey(volcengineAccessKey)
+    }
+
+    this.store.set('asr', {
+      ...asr,
+      glm: {
+        ...asr.glm,
+        apiKeys,
+      },
+      volcengine: {
+        ...asr.volcengine,
+        accessKey: volcengineAccessKey,
+      },
+    })
 
     const llmRefine = normalizeLLMRefineConfig(this.store.get('llmRefine', defaultConfig.llmRefine))
     if (llmRefine.apiKey && !llmRefine.apiKey.startsWith(ENCRYPTED_PREFIX)) {
@@ -243,32 +368,49 @@ export class ConfigManager {
   }
 
   getASRConfig(): ASRConfig {
-    const config = this.store.get('asr', defaultConfig.asr)
-    if (!config.apiKeys) {
-      config.apiKeys = { cn: '', intl: '' }
+    const config = normalizeASRConfig(this.store.get('asr', defaultConfig.asr))
+    return {
+      ...config,
+      glm: {
+        ...config.glm,
+        apiKeys: {
+          cn: this.decryptKey(config.glm.apiKeys.cn),
+          intl: this.decryptKey(config.glm.apiKeys.intl),
+        },
+      },
+      volcengine: {
+        ...config.volcengine,
+        accessKey: this.decryptKey(config.volcengine.accessKey),
+      },
     }
-    config.apiKeys = {
-      cn: this.decryptKey(config.apiKeys.cn),
-      intl: this.decryptKey(config.apiKeys.intl),
-    }
-    if (!config.region) {
-      config.region = 'cn'
-    }
-    if (typeof config.lowVolumeMode !== 'boolean') {
-      config.lowVolumeMode = defaultConfig.asr.lowVolumeMode
-    }
-    return config
   }
 
   setASRConfig(config: Partial<ASRConfig>): void {
     const current = this.getASRConfig()
-    const merged = { ...current, ...config }
-    if (merged.apiKeys) {
-      merged.apiKeys = {
-        cn: this.encryptKey(merged.apiKeys.cn),
-        intl: this.encryptKey(merged.apiKeys.intl),
-      }
+    const merged = normalizeASRConfig({
+      ...current,
+      ...config,
+      glm: {
+        ...current.glm,
+        ...config.glm,
+        apiKeys: config.glm?.apiKeys
+          ? {
+              ...current.glm.apiKeys,
+              ...config.glm.apiKeys,
+            }
+          : current.glm.apiKeys,
+      },
+      volcengine: {
+        ...current.volcengine,
+        ...config.volcengine,
+      },
+    })
+
+    merged.glm.apiKeys = {
+      cn: this.encryptKey(merged.glm.apiKeys.cn),
+      intl: this.encryptKey(merged.glm.apiKeys.intl),
     }
+    merged.volcengine.accessKey = this.encryptKey(merged.volcengine.accessKey)
     this.store.set('asr', merged)
   }
 
@@ -304,9 +446,13 @@ export class ConfigManager {
 
   isValid(): boolean {
     const asr = this.getASRConfig()
-    const region = asr.region || 'cn'
-    const key = asr.apiKeys?.[region]
-    return !!key && key.length > 0
+    if (asr.provider === 'volcengine') {
+      return Boolean(asr.volcengine.appKey.trim() && asr.volcengine.accessKey.trim())
+    }
+
+    const region = asr.glm.region || 'cn'
+    const key = asr.glm.apiKeys?.[region]
+    return Boolean(key && key.length > 0)
   }
 }
 

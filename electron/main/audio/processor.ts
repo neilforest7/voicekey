@@ -10,8 +10,12 @@ import type { TextRefiner } from '../refine'
 import { textInjector } from '../text-injector'
 import { getBackgroundWindow } from '../window/background'
 import { hideOverlay, updateOverlay } from '../window/overlay'
-import { convertToMP3 } from './converter'
+import { convertToMP3, convertToPCM } from './converter'
 import { clearSession, getCurrentSession, updateSession } from './session-manager'
+import type {
+  VolcengineASRProvider,
+  StreamingTranscriptCallback,
+} from '../asr-providers/volcengine-provider'
 
 type ProcessorDeps = {
   getAsrProvider: () => ASRProvider | null
@@ -29,12 +33,23 @@ type ChunkSessionState = {
   tempFiles: Set<string>
   failed: boolean
   finalized: boolean
+  asrProvider: ASRProvider | null
+}
+
+type StreamingSessionState = {
+  sessionId: string
+  latestText: string
+  finalized: boolean
+  failed: boolean
+  asrProvider: VolcengineASRProvider | null
+  resolveFinalized?: (text: string) => void
 }
 
 const PROMPT_TAIL_MAX_LENGTH = 800
 
 let deps: ProcessorDeps
 const chunkSessions = new Map<string, ChunkSessionState>()
+const streamingSessions = new Map<string, StreamingSessionState>()
 
 export function initProcessor(dependencies: ProcessorDeps): void {
   deps = dependencies
@@ -89,6 +104,7 @@ function getOrCreateChunkSession(sessionId: string): ChunkSessionState {
     tempFiles: new Set(),
     failed: false,
     finalized: false,
+    asrProvider: null,
   }
   chunkSessions.set(sessionId, sessionState)
   return sessionState
@@ -136,13 +152,15 @@ async function processChunk(
       return
     }
 
-    const asrProvider = getInitializedAsrProvider()
+    const asrProvider = getOrCreateSessionAsrProvider(sessionState)
     const prompt = buildPromptForChunk(sessionState, payload.chunkIndex)
     const requestId = `${payload.sessionId}-chunk-${payload.chunkIndex}`
 
     const transcription = await asrProvider.transcribe(tempMp3Path, {
       prompt,
       requestId,
+      sourceAudioFilePath: tempInputPath,
+      sourceMimeType: payload.mimeType,
     })
 
     if (sessionState.failed || !isSessionUsable(payload.sessionId)) {
@@ -169,6 +187,16 @@ function getInitializedAsrProvider(): ASRProvider {
     throw new Error('ASR Provider initialization failed')
   }
 
+  return asrProvider
+}
+
+function getOrCreateSessionAsrProvider(sessionState: ChunkSessionState): ASRProvider {
+  if (sessionState.asrProvider) {
+    return sessionState.asrProvider
+  }
+
+  const asrProvider = getInitializedAsrProvider()
+  sessionState.asrProvider = asrProvider
   return asrProvider
 }
 
@@ -203,6 +231,18 @@ async function finalizeSessionIfReady(sessionState: ChunkSessionState): Promise<
   }
 
   const rawText = mergeTranscriptSegments(orderedTexts)
+
+  if (shouldSkipSessionOutput(currentSession, rawText)) {
+    console.log('[Audio:Processor] No speech detected, skipping history and text injection')
+    updateSession({
+      transcription: '',
+      status: 'completed',
+    })
+    hideOverlay()
+    clearSession()
+    return
+  }
+
   let finalText = rawText
 
   const refineService = deps.getRefineService?.() ?? null
@@ -234,6 +274,17 @@ async function finalizeSessionIfReady(sessionState: ChunkSessionState): Promise<
   }
 
   if (!isSessionUsable(sessionState.sessionId)) {
+    return
+  }
+
+  if (shouldSkipSessionOutput(getCurrentSession(), finalText)) {
+    console.log('[Audio:Processor] Final text is empty after processing, skipping output')
+    updateSession({
+      transcription: '',
+      status: 'completed',
+    })
+    hideOverlay()
+    clearSession()
     return
   }
 
@@ -398,10 +449,274 @@ function isSessionUsable(sessionId: string): boolean {
   )
 }
 
+function shouldSkipSessionOutput(
+  session: ReturnType<typeof getCurrentSession>,
+  text: string,
+): boolean {
+  if (!text.trim()) {
+    return true
+  }
+
+  return Boolean(session && session.speechDetected === false)
+}
+
+export async function startStreamingSession(sessionId: string): Promise<void> {
+  const currentSession = getCurrentSession()
+  if (!currentSession || currentSession.id !== sessionId) {
+    console.log('[Audio:Processor] Streaming session mismatch, ignoring')
+    return
+  }
+
+  const asrConfig = deps.getASRConfig()
+  if (!asrConfig.streamingMode) {
+    console.log('[Audio:Processor] Streaming mode disabled, ignoring')
+    return
+  }
+
+  if (asrConfig.provider !== 'volcengine') {
+    console.log('[Audio:Processor] Streaming mode only supports Volcengine, ignoring')
+    return
+  }
+
+  const asrProvider = deps.getAsrProvider()
+  if (!asrProvider || asrProvider.constructor.name !== 'VolcengineASRProvider') {
+    console.error('[Audio:Processor] Volcengine ASR provider not available for streaming')
+    return
+  }
+
+  const volcProvider = asrProvider as VolcengineASRProvider
+
+  const sessionState: StreamingSessionState = {
+    sessionId,
+    latestText: '',
+    finalized: false,
+    failed: false,
+    asrProvider: volcProvider,
+  }
+  streamingSessions.set(sessionId, sessionState)
+
+  const onTranscript: StreamingTranscriptCallback = (text, isFinal) => {
+    console.log(
+      `[Audio:Processor] Streaming transcript received: isFinal=${isFinal}, text="${text}"`,
+    )
+    if (sessionState.failed || sessionState.finalized) return
+
+    sessionState.latestText = text
+
+    if (isFinal) {
+      sessionState.finalized = true
+      console.log('[Audio:Processor] Streaming session finalized, resolving promise')
+      sessionState.resolveFinalized?.(text)
+    }
+  }
+
+  try {
+    await volcProvider.startStreamingTranscription(onTranscript)
+    console.log('[Audio:Processor] Streaming transcription started')
+  } catch (error) {
+    console.error('[Audio:Processor] Failed to start streaming:', error)
+    sessionState.failed = true
+    streamingSessions.delete(sessionId)
+  }
+}
+
+export async function handleStreamingAudioChunk(
+  sessionId: string,
+  buffer: Buffer,
+  isFinal = false,
+  mimeType = 'audio/webm',
+): Promise<void> {
+  const sessionState = streamingSessions.get(sessionId)
+  if (!sessionState || sessionState.failed || sessionState.finalized) {
+    return
+  }
+
+  if (!sessionState.asrProvider) {
+    console.error('[Audio:Processor] No ASR provider for streaming session')
+    return
+  }
+
+  console.log('[Audio:Processor] Received streaming audio chunk:', buffer.length, 'bytes', {
+    isFinal,
+    mimeType,
+  })
+
+  if (mimeType === 'audio/pcm') {
+    sessionState.asrProvider.sendStreamingAudioChunk(buffer, isFinal)
+    return
+  }
+
+  if (isFinal && buffer.length === 0) {
+    sessionState.asrProvider.sendStreamingAudioChunk(Buffer.alloc(0), true)
+    return
+  }
+
+  try {
+    const timestamp = Date.now()
+    const inputExtension = resolveAudioExtension(mimeType)
+    const tempInputPath = path.join(
+      app.getPath('temp'),
+      `voice-key-streaming-${sessionId}-${timestamp}.${inputExtension}`,
+    )
+    const tempPcmPath = path.join(
+      app.getPath('temp'),
+      `voice-key-streaming-${sessionId}-${timestamp}.pcm`,
+    )
+
+    fs.writeFileSync(tempInputPath, buffer)
+
+    const asrConfig = deps.getASRConfig()
+    const lowVolumeModeEnabled = asrConfig.lowVolumeMode ?? true
+
+    console.log('[Audio:Processor] Converting audio chunk to PCM...')
+    await convertToPCM(tempInputPath, tempPcmPath, {
+      gainDb: lowVolumeModeEnabled ? LOW_VOLUME_GAIN_DB : undefined,
+    })
+
+    const pcmBuffer = fs.readFileSync(tempPcmPath)
+    console.log('[Audio:Processor] Sending PCM chunk:', pcmBuffer.length, 'bytes')
+    sessionState.asrProvider.sendStreamingAudioChunk(pcmBuffer, isFinal)
+
+    try {
+      if (fs.existsSync(tempInputPath)) fs.unlinkSync(tempInputPath)
+      if (fs.existsSync(tempPcmPath)) fs.unlinkSync(tempPcmPath)
+    } catch (cleanupError) {
+      console.error('[Audio:Processor] Cleanup failed:', cleanupError)
+    }
+  } catch (error) {
+    console.error('[Audio:Processor] Failed to convert streaming audio chunk:', error)
+  }
+}
+
+export async function finalizeStreamingSession(sessionId: string): Promise<string> {
+  const sessionState = streamingSessions.get(sessionId)
+  if (!sessionState) {
+    console.log('[Audio:Processor] No streaming session found')
+    return ''
+  }
+
+  console.log(
+    '[Audio:Processor] Finalizing streaming session, latest text:',
+    sessionState.latestText,
+  )
+
+  // Create a promise that resolves when the streaming session is finalized
+  const finalizedPromise = new Promise<string>((resolve) => {
+    sessionState.resolveFinalized = resolve
+  })
+
+  // Wait for the final response with a timeout after renderer sends the final chunk
+  // Wait for the final response with a timeout
+  const FINALIZE_TIMEOUT_MS = 5000
+  let rawText = sessionState.latestText
+
+  try {
+    rawText = await Promise.race([
+      finalizedPromise,
+      new Promise<string>((resolve) =>
+        setTimeout(() => {
+          console.warn(
+            '[Audio:Processor] Streaming finalize timeout, using latest text:',
+            sessionState.latestText,
+          )
+          resolve(sessionState.latestText)
+        }, FINALIZE_TIMEOUT_MS),
+      ),
+    ])
+    console.log('[Audio:Processor] Streaming session finalized with text:', rawText)
+  } catch (error) {
+    console.error('[Audio:Processor] Error waiting for streaming finalize:', error)
+  }
+
+  const currentSession = getCurrentSession()
+  if (!currentSession || currentSession.id !== sessionId) {
+    console.log('[Audio:Processor] Session mismatch during finalize')
+    streamingSessions.delete(sessionId)
+    return rawText
+  }
+
+  if (shouldSkipSessionOutput(currentSession, rawText)) {
+    console.log('[Audio:Processor] No speech detected in streaming session, skipping output')
+    updateSession({
+      transcription: '',
+      status: 'completed',
+    })
+    hideOverlay()
+    clearSession()
+    streamingSessions.delete(sessionId)
+    return ''
+  }
+
+  let finalText = rawText
+
+  const refineService = deps.getRefineService?.() ?? null
+  if (refineService?.isEnabled() && refineService.hasValidConfig()) {
+    try {
+      updateOverlay({
+        status: 'processing',
+        processingStage: 'refining',
+        processingTotalStages: 2,
+      })
+      console.log('[Audio:Processor] Refining streaming transcription...')
+      const refined = await refineService.refineText(rawText)
+      if (refined.trim().length > 0) {
+        finalText = refined
+      } else {
+        console.warn(
+          '[Audio:Processor] Text refinement returned empty text, using raw transcription',
+        )
+      }
+    } catch (error) {
+      console.error('[Audio:Processor] Text refinement failed, using raw transcription:', error)
+    }
+  }
+
+  if (shouldSkipSessionOutput(getCurrentSession(), finalText)) {
+    console.log('[Audio:Processor] Final text is empty after processing, skipping output')
+    updateSession({
+      transcription: '',
+      status: 'completed',
+    })
+    hideOverlay()
+    clearSession()
+    streamingSessions.delete(sessionId)
+    return ''
+  }
+
+  updateSession({
+    transcription: finalText,
+    status: 'completed',
+  })
+
+  historyManager.add({
+    text: finalText,
+    duration: getCurrentSession()?.duration,
+  })
+
+  console.log('[Audio:Processor] Injecting streaming text...')
+  await textInjector.injectText(finalText)
+
+  updateOverlay({ status: 'success' })
+  setTimeout(() => hideOverlay(), 800)
+  clearSession()
+
+  streamingSessions.delete(sessionId)
+  return finalText
+}
+
+export function cancelStreamingSession(sessionId: string): void {
+  const sessionState = streamingSessions.get(sessionId)
+  if (sessionState?.asrProvider) {
+    sessionState.asrProvider.stopStreamingTranscription()
+  }
+  streamingSessions.delete(sessionId)
+}
+
 export const __testUtils = {
   buildPromptForChunk,
   mergeTranscriptSegments,
   resolveAudioExtension,
+  shouldSkipSessionOutput,
   resetChunkSessions: () => {
     chunkSessions.clear()
   },

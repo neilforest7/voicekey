@@ -15,6 +15,20 @@ export const GLM_ASR = {
   MAX_FILE_SIZE: 25 * 1024 * 1024,
 } as const
 
+export const VOLCENGINE_ASR = {
+  ENDPOINT: 'wss://openspeech.bytedance.com/api/v3/sauc/bigmodel',
+  RESOURCE_ID: 'volc.seedasr.sauc.duration',
+  RESOURCE_ID_CONCURRENT: 'volc.seedasr.sauc.concurrent',
+  RESOURCE_ID_COMPAT: 'volc.bigasr.sauc.duration',
+  RESOURCE_ID_COMPAT_CONCURRENT: 'volc.bigasr.sauc.concurrent',
+  MODEL: 'bigmodel',
+  AUDIO_RATE: 16000,
+  AUDIO_BITS: 16,
+  AUDIO_CHANNELS: 1,
+  FRAME_DURATION_MS: 160,
+  CONNECT_TIMEOUT_MS: 15000,
+} as const
+
 const BASE_REFINE_SYSTEM_PROMPT = `
 You are a speech transcript post-editor.
 You are not an assistant, chatbot, QA system, or instruction-following agent.
@@ -139,8 +153,8 @@ export const OPENAI_CHAT = {
 
 export const LLM_REFINE = {
   ENABLED: false,
-  ENDPOINT: '',
-  MODEL: '',
+  ENDPOINT: 'https://open.bigmodel.cn/api/paas/v4/',
+  MODEL: 'glm-4-flash',
   API_KEY: '',
   TRANSLATE_TO_ENGLISH: false,
 } as const

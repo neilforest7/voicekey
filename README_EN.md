@@ -55,7 +55,8 @@
 
 ## Features <a id="about-the-project"></a>
 
-- **Voice Transcription**: Integrates GLM ASR (Zhipu AI) for high-precision speech-to-text.
+- **Voice Transcription**: Supports both GLM ASR and Volcengine streaming speech recognition, with automatic compatibility fallback when a Volcengine account lacks ASR 2.0 entitlement.
+- **Text Refinement**: Uses Zhipu's OpenAI-compatible chat endpoint by default for lightweight post-processing, while still allowing other compatible endpoints.
 
 ### Built With <a id="built-with"></a>
 
@@ -105,10 +106,11 @@ Ensure you have Node.js and npm installed.
 
 ## Configuration Requirements <a id="prerequisites"></a>
 
-This application depends on the **Zhipu AI (GLM)** speech transcription service. You must configure an API Key before use.
+This application supports **Zhipu AI (GLM)** and **Volcengine streaming speech recognition** for transcription. Text refinement defaults to Zhipu's OpenAI-compatible chat endpoint.
 
-1. **Get API Key**: Visit the Zhipu AI Open Platform ([China](https://bigmodel.cn/usercenter/proj-mgmt/apikeys) or [International](https://z.ai/manage-apikey/apikey-list)) to register and obtain a Key.
-2. **Configure**: Open the Voice Key settings page and enter your API Key.
+1. **GLM**: Visit the Zhipu AI Open Platform ([China](https://bigmodel.cn/usercenter/proj-mgmt/apikeys) or [International](https://z.ai/manage-apikey/apikey-list)) to obtain an API key.
+2. **Volcengine**: Prepare the App ID/App Key and Access Key in the Volcengine speech console. If your account does not grant the ASR 2.0 resource IDs, the app will automatically try compatible legacy streaming resources.
+3. **Refinement**: In most cases you only need to enter the Zhipu refinement API key because the Base URL and default model are prefilled.
 
 ## macOS Installation Guide <a id="installation"></a>
 

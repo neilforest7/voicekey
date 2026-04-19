@@ -70,18 +70,32 @@ export function extractMessageContent(data: OpenAIResponse): string {
     return ''
   }
 
+  let text: string
   if (typeof content === 'string') {
-    return content.trim()
+    text = content.trim()
+  } else {
+    text = content
+      .map((part) => {
+        if (typeof part === 'string') {
+          return part
+        }
+
+        return typeof part.text === 'string' ? part.text : ''
+      })
+      .join('')
+      .trim()
   }
 
-  return content
-    .map((part) => {
-      if (typeof part === 'string') {
-        return part
-      }
+  // Extract content between BEGIN_TRANSCRIPT and END_TRANSCRIPT markers
+  const beginMarker = 'BEGIN_TRANSCRIPT'
+  const endMarker = 'END_TRANSCRIPT'
+  const beginIndex = text.indexOf(beginMarker)
+  const endIndex = text.indexOf(endMarker)
 
-      return typeof part.text === 'string' ? part.text : ''
-    })
-    .join('')
-    .trim()
+  if (beginIndex !== -1 && endIndex !== -1 && endIndex > beginIndex) {
+    return text.slice(beginIndex + beginMarker.length, endIndex).trim()
+  }
+
+  // If markers are not found or in wrong order, return the original text
+  return text
 }

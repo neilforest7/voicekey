@@ -2,7 +2,13 @@
 import { CheckCircle2, XCircle, AlertTriangle, Eye, EyeOff, Sparkles } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { type LanguageSetting } from '@electron/shared/i18n'
-import { LOG_FILE_MAX_SIZE_MB, LOG_RETENTION_DAYS, LLM_REFINE } from '@electron/shared/constants'
+import {
+  GLM_ASR,
+  LOG_FILE_MAX_SIZE_MB,
+  LOG_RETENTION_DAYS,
+  LLM_REFINE,
+  VOLCENGINE_ASR,
+} from '@electron/shared/constants'
 import { normalizeRefineBaseUrl } from '@electron/shared/refine-url'
 import type { AppConfig, LLMRefineConfig, UpdateInfo } from '@electron/shared/types'
 import { LogViewerDialog } from '@/components/LogViewerDialog'
@@ -67,8 +73,15 @@ function normalizeLLMRefineConfig(config?: Partial<LLMRefineConfig>): LLMRefineC
   return {
     ...defaultLLMRefineConfig,
     enabled: typeof config?.enabled === 'boolean' ? config.enabled : defaultLLMRefineConfig.enabled,
-    endpoint: normalizeRefineBaseUrl(config?.endpoint ?? defaultLLMRefineConfig.endpoint),
-    model: config?.model ?? defaultLLMRefineConfig.model,
+    endpoint: normalizeRefineBaseUrl(
+      typeof config?.endpoint === 'string' && config.endpoint.trim().length > 0
+        ? config.endpoint
+        : defaultLLMRefineConfig.endpoint,
+    ),
+    model:
+      typeof config?.model === 'string' && config.model.trim().length > 0
+        ? config.model
+        : defaultLLMRefineConfig.model,
     apiKey: config?.apiKey ?? defaultLLMRefineConfig.apiKey,
     translateToEnglish: readTranslateToEnglishFlag(rawConfig),
   }
@@ -85,12 +98,17 @@ function isAppPreferencesDirty(current: AppConfig['app'], original: AppConfig['a
 function isAsrConfigDirty(current: AppConfig['asr'], original: AppConfig['asr']): boolean {
   return (
     current.provider !== original.provider ||
-    current.region !== original.region ||
-    current.endpoint !== original.endpoint ||
     current.language !== original.language ||
     (current.lowVolumeMode ?? true) !== (original.lowVolumeMode ?? true) ||
-    current.apiKeys.cn !== original.apiKeys.cn ||
-    current.apiKeys.intl !== original.apiKeys.intl
+    (current.streamingMode ?? false) !== (original.streamingMode ?? false) ||
+    current.glm.region !== original.glm.region ||
+    current.glm.endpoint !== original.glm.endpoint ||
+    current.glm.apiKeys.cn !== original.glm.apiKeys.cn ||
+    current.glm.apiKeys.intl !== original.glm.apiKeys.intl ||
+    current.volcengine.appKey !== original.volcengine.appKey ||
+    current.volcengine.accessKey !== original.volcengine.accessKey ||
+    current.volcengine.resourceId !== original.volcengine.resourceId ||
+    current.volcengine.endpoint !== original.volcengine.endpoint
   )
 }
 
@@ -116,9 +134,18 @@ function mergeConfigPatch(config: AppConfig, patch: Partial<AppConfig>): AppConf
       ? {
           ...config.asr,
           ...patch.asr,
-          apiKeys: patch.asr.apiKeys
-            ? { ...config.asr.apiKeys, ...patch.asr.apiKeys }
-            : config.asr.apiKeys,
+          glm: patch.asr.glm
+            ? {
+                ...config.asr.glm,
+                ...patch.asr.glm,
+                apiKeys: patch.asr.glm.apiKeys
+                  ? { ...config.asr.glm.apiKeys, ...patch.asr.glm.apiKeys }
+                  : config.asr.glm.apiKeys,
+              }
+            : config.asr.glm,
+          volcengine: patch.asr.volcengine
+            ? { ...config.asr.volcengine, ...patch.asr.volcengine }
+            : config.asr.volcengine,
         }
       : config.asr,
     llmRefine: patch.llmRefine
@@ -191,13 +218,22 @@ export default function SettingsPage() {
     },
     asr: {
       provider: 'glm',
-      region: 'cn',
-      apiKeys: {
-        cn: '',
-        intl: '',
+      glm: {
+        region: 'cn',
+        apiKeys: {
+          cn: '',
+          intl: '',
+        },
+        endpoint: '',
+      },
+      volcengine: {
+        appKey: '',
+        accessKey: '',
+        resourceId: '',
+        endpoint: '',
       },
       lowVolumeMode: true,
-      endpoint: '',
+      streamingMode: false,
       language: 'auto',
     },
     llmRefine: defaultLLMRefineConfig,
@@ -434,11 +470,16 @@ export default function SettingsPage() {
   }, [config, originalConfig, isConfigLoading])
 
   const handleTestConnection = async () => {
-    const region = config.asr.region || 'cn'
-    const apiKey = config.asr.apiKeys[region]
+    const hasGlmCredentials = Boolean(config.asr.glm.apiKeys[config.asr.glm.region || 'cn'])
+    const hasVolcengineCredentials = Boolean(
+      config.asr.volcengine.appKey.trim() && config.asr.volcengine.accessKey.trim(),
+    )
 
-    if (!apiKey) {
-      setAsrTestStatus({ type: 'error', message: t('settings.result.apiKeyRequired') })
+    if (
+      (config.asr.provider === 'glm' && !hasGlmCredentials) ||
+      (config.asr.provider === 'volcengine' && !hasVolcengineCredentials)
+    ) {
+      setAsrTestStatus({ type: 'error', message: t('settings.result.asrCredentialsRequired') })
       return
     }
 
@@ -501,30 +542,63 @@ export default function SettingsPage() {
     }
   }
 
-  // Helper to update API Key for current region
-  const handleApiKeyChange = (value: string) => {
-    const region = config.asr.region || 'cn'
+  const handleAsrProviderChange = (value: string) => {
+    const provider = value as AppConfig['asr']['provider']
+
     setConfig((prev) => ({
       ...prev,
       asr: {
         ...prev.asr,
-        apiKeys: {
-          ...prev.asr.apiKeys,
-          [region]: value,
+        provider,
+      },
+    }))
+  }
+
+  const handleGlmApiKeyChange = (value: string) => {
+    const region = config.asr.glm.region || 'cn'
+
+    setConfig((prev) => ({
+      ...prev,
+      asr: {
+        ...prev.asr,
+        glm: {
+          ...prev.asr.glm,
+          apiKeys: {
+            ...prev.asr.glm.apiKeys,
+            [region]: value,
+          },
         },
       },
     }))
   }
 
-  // Helper to change Region
   const handleRegionChange = (value: string) => {
     const region = value as 'cn' | 'intl'
     setConfig((prev) => ({
       ...prev,
       asr: {
         ...prev.asr,
-        region,
-        endpoint: '', // Clear endpoint to ensure region default is used
+        glm: {
+          ...prev.asr.glm,
+          region,
+          endpoint: '',
+        },
+      },
+    }))
+  }
+
+  const handleVolcengineConfigChange = (
+    key: keyof AppConfig['asr']['volcengine'],
+    value: string,
+  ) => {
+    setConfig((prev) => ({
+      ...prev,
+      asr: {
+        ...prev.asr,
+        volcengine: {
+          ...prev.asr.volcengine,
+          [key]: value,
+        },
       },
     }))
   }
@@ -541,8 +615,16 @@ export default function SettingsPage() {
     }))
   }
 
-  const currentRegion = config.asr.region || 'cn'
-  const currentApiKey = config.asr.apiKeys?.[currentRegion] || ''
+  const currentProvider = config.asr.provider
+  const currentRegion = config.asr.glm.region || 'cn'
+  const currentApiKey = config.asr.glm.apiKeys?.[currentRegion] || ''
+  const currentGlmEndpoint =
+    config.asr.glm.endpoint || (currentRegion === 'intl' ? GLM_ASR.ENDPOINT_INTL : GLM_ASR.ENDPOINT)
+  const currentVolcengineEndpoint = config.asr.volcengine.endpoint || VOLCENGINE_ASR.ENDPOINT
+  const canTestAsr =
+    currentProvider === 'glm'
+      ? Boolean(currentApiKey)
+      : Boolean(config.asr.volcengine.appKey.trim() && config.asr.volcengine.accessKey.trim())
   const normalizedLLMRefineConfig = normalizeLLMRefineConfig(config.llmRefine)
   const llmRefineEnabled = normalizedLLMRefineConfig.enabled
   const translateToEnglish = normalizedLLMRefineConfig.translateToEnglish
@@ -727,76 +809,156 @@ export default function SettingsPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="region">{t('settings.region')}</Label>
-              <Select value={currentRegion} onValueChange={handleRegionChange}>
-                <SelectTrigger id="region" className="no-drag w-full cursor-pointer">
+              <Label htmlFor="asrProvider">{t('settings.asrProvider')}</Label>
+              <Select value={currentProvider} onValueChange={handleAsrProviderChange}>
+                <SelectTrigger id="asrProvider" className="no-drag w-full cursor-pointer">
                   <SelectValue placeholder={t('settings.languagePlaceholder')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="cn">{t('settings.regionChina')}</SelectItem>
-                  <SelectItem value="intl">{t('settings.regionIntl')}</SelectItem>
+                  <SelectItem value="glm">{t('settings.asrProviderGlm')}</SelectItem>
+                  <SelectItem value="volcengine">{t('settings.asrProviderVolcengine')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="apiKey">
-                {t('settings.apiKey')} <span className="text-destructive">*</span>
-              </Label>
-              <div className="relative">
-                <Input
-                  id="apiKey"
-                  type={showAsrApiKey ? 'text' : 'password'}
-                  value={currentApiKey}
-                  onChange={(e) => handleApiKeyChange(e.target.value)}
-                  placeholder={t('settings.apiKeyPlaceholder')}
-                  className="no-drag pr-10"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowAsrApiKey((prev) => !prev)}
-                  aria-label={showAsrApiKey ? t('settings.hideKey') : t('settings.showKey')}
-                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-muted-foreground hover:text-foreground no-drag"
-                >
-                  {showAsrApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-              <p className="text-sm text-muted-foreground mr-1">
-                {t('settings.apiKeyHelp')}{' '}
-                <a
-                  href={
-                    currentRegion === 'intl'
-                      ? 'https://z.ai/manage-apikey/apikey-list'
-                      : 'https://bigmodel.cn/usercenter/proj-mgmt/apikeys'
-                  }
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-primary hover:underline"
-                >
-                  {currentRegion === 'intl' ? 'z.ai' : 'bigmodel.cn'}
-                </a>
-              </p>
-            </div>
+            {currentProvider === 'glm' ? (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="region">{t('settings.region')}</Label>
+                  <Select value={currentRegion} onValueChange={handleRegionChange}>
+                    <SelectTrigger id="region" className="no-drag w-full cursor-pointer">
+                      <SelectValue placeholder={t('settings.languagePlaceholder')} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cn">{t('settings.regionChina')}</SelectItem>
+                      <SelectItem value="intl">{t('settings.regionIntl')}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="endpoint">{t('settings.apiEndpoint')}</Label>
-              <Input
-                id="endpoint"
-                type="text"
-                value={
-                  config.asr.endpoint ||
-                  (currentRegion === 'intl'
-                    ? 'https://api.z.ai/api/paas/v4/audio/transcriptions'
-                    : 'https://open.bigmodel.cn/api/paas/v4/audio/transcriptions')
-                }
-                readOnly
-                disabled
-                className="no-drag bg-muted text-muted-foreground"
-              />
-              <div className="mt-2 flex items-center space-x-2">
-                <AlertTriangle className="h-4 w-4 text-yellow-500" />
-                <p className="text-sm text-muted-foreground">{t('settings.durationWarning')}</p>
-              </div>
+                <div className="space-y-2">
+                  <Label htmlFor="apiKey">
+                    {t('settings.apiKey')} <span className="text-destructive">*</span>
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      id="apiKey"
+                      type={showAsrApiKey ? 'text' : 'password'}
+                      value={currentApiKey}
+                      onChange={(e) => handleGlmApiKeyChange(e.target.value)}
+                      placeholder={t('settings.apiKeyPlaceholder')}
+                      className="no-drag pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowAsrApiKey((prev) => !prev)}
+                      aria-label={showAsrApiKey ? t('settings.hideKey') : t('settings.showKey')}
+                      className="absolute inset-y-0 right-0 flex items-center pr-3 text-muted-foreground hover:text-foreground no-drag"
+                    >
+                      {showAsrApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  <p className="text-sm text-muted-foreground mr-1">
+                    {t('settings.apiKeyHelp')}{' '}
+                    <a
+                      href={
+                        currentRegion === 'intl'
+                          ? 'https://z.ai/manage-apikey/apikey-list'
+                          : 'https://bigmodel.cn/usercenter/proj-mgmt/apikeys'
+                      }
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-primary hover:underline"
+                    >
+                      {currentRegion === 'intl' ? 'z.ai' : 'bigmodel.cn'}
+                    </a>
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="endpoint">{t('settings.apiEndpoint')}</Label>
+                  <Input
+                    id="endpoint"
+                    type="text"
+                    value={currentGlmEndpoint}
+                    readOnly
+                    disabled
+                    className="no-drag bg-muted text-muted-foreground"
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="volcengineAppKey">
+                    {t('settings.volcengineAppKey')} <span className="text-destructive">*</span>
+                  </Label>
+                  <Input
+                    id="volcengineAppKey"
+                    type="text"
+                    value={config.asr.volcengine.appKey}
+                    onChange={(e) => handleVolcengineConfigChange('appKey', e.target.value)}
+                    placeholder={t('settings.volcengineAppKeyPlaceholder')}
+                    className="no-drag"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="volcengineAccessKey">
+                    {t('settings.volcengineAccessKey')} <span className="text-destructive">*</span>
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      id="volcengineAccessKey"
+                      type={showAsrApiKey ? 'text' : 'password'}
+                      value={config.asr.volcengine.accessKey}
+                      onChange={(e) => handleVolcengineConfigChange('accessKey', e.target.value)}
+                      placeholder={t('settings.volcengineAccessKeyPlaceholder')}
+                      className="no-drag pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowAsrApiKey((prev) => !prev)}
+                      aria-label={showAsrApiKey ? t('settings.hideKey') : t('settings.showKey')}
+                      className="absolute inset-y-0 right-0 flex items-center pr-3 text-muted-foreground hover:text-foreground no-drag"
+                    >
+                      {showAsrApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="volcengineResourceId">{t('settings.volcengineResourceId')}</Label>
+                  <Input
+                    id="volcengineResourceId"
+                    type="text"
+                    value={config.asr.volcengine.resourceId}
+                    onChange={(e) => handleVolcengineConfigChange('resourceId', e.target.value)}
+                    placeholder={t('settings.volcengineResourceIdPlaceholder')}
+                    className="no-drag"
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    {t('settings.volcengineResourceIdHelp')}
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="volcengineEndpoint">{t('settings.apiEndpoint')}</Label>
+                  <Input
+                    id="volcengineEndpoint"
+                    type="text"
+                    value={currentVolcengineEndpoint}
+                    readOnly
+                    disabled
+                    className="no-drag bg-muted text-muted-foreground"
+                  />
+                </div>
+              </>
+            )}
+
+            <div className="mt-2 flex items-center space-x-2">
+              <AlertTriangle className="h-4 w-4 text-yellow-500" />
+              <p className="text-sm text-muted-foreground">{t('settings.durationWarning')}</p>
             </div>
 
             <div className="flex items-center justify-between space-x-2">
@@ -817,11 +979,31 @@ export default function SettingsPage() {
               />
             </div>
 
+            {currentProvider === 'volcengine' && (
+              <div className="flex items-center justify-between space-x-2">
+                <div className="space-y-0.5">
+                  <Label htmlFor="streamingMode">{t('settings.streamingMode')}</Label>
+                  <p className="text-sm text-muted-foreground">{t('settings.streamingModeHelp')}</p>
+                </div>
+                <Switch
+                  id="streamingMode"
+                  checked={config.asr.streamingMode ?? false}
+                  onCheckedChange={(checked) =>
+                    setConfig((prev) => ({
+                      ...prev,
+                      asr: { ...prev.asr, streamingMode: checked },
+                    }))
+                  }
+                  className="no-drag cursor-pointer"
+                />
+              </div>
+            )}
+
             <div className="space-y-3 border-t border-border pt-4">
               <Button
                 variant="secondary"
                 onClick={handleTestConnection}
-                disabled={testingAsr || !currentApiKey}
+                disabled={testingAsr || !canTestAsr}
                 className="no-drag cursor-pointer"
               >
                 {testingAsr ? t('settings.testingConnection') : t('settings.testConnection')}

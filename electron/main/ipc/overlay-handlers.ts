@@ -23,6 +23,8 @@ export type OverlayHandlersDeps = {
   showNotification: (title: string, body: string) => void
   /** 获取当前会话 */
   getCurrentSession: () => VoiceSession | null
+  /** 记录当前会话音频电平，用于无语音判定 */
+  recordSessionAudioLevel: (level: number) => void
   /** 设置会话错误状态 */
   setSessionError: () => void
 }
@@ -44,6 +46,7 @@ export function registerOverlayHandlers(): void {
   // OVERLAY_AUDIO_LEVEL: 音频电平更新
   ipcMain.on(IPC_CHANNELS.OVERLAY_AUDIO_LEVEL, (_event, level: number) => {
     sendAudioLevel(level)
+    deps.recordSessionAudioLevel(level)
   })
 
   // set-ignore-mouse-events: 设置浮窗鼠标穿透

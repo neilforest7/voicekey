@@ -21,6 +21,12 @@ export interface ConvertToMP3Options {
   gainDb?: number
 }
 
+export interface ConvertToPCMOptions {
+  gainDb?: number
+  sampleRate?: number
+  channels?: number
+}
+
 /**
  * 初始化 FFmpeg
  *
@@ -97,6 +103,45 @@ export function convertToMP3(
       .on('error', (err: Error) => {
         const duration = Date.now() - conversionStartTime
         console.error(`[Audio:Converter] Conversion failed after ${duration}ms:`, err)
+        reject(err)
+      })
+      .save(outputPath)
+  })
+}
+
+export function convertToPCM(
+  inputPath: string,
+  outputPath: string,
+  options?: ConvertToPCMOptions,
+): Promise<void> {
+  const conversionStartTime = Date.now()
+  return new Promise((resolve, reject) => {
+    initializeFfmpeg()
+
+    console.log('[Audio:Converter] Converting audio to PCM...')
+    console.log(`[Audio:Converter]   Input: ${inputPath}`)
+    console.log(`[Audio:Converter]   Output: ${outputPath}`)
+
+    const command = ffmpeg(inputPath)
+      .toFormat('s16le')
+      .audioCodec('pcm_s16le')
+      .audioFrequency(options?.sampleRate ?? 16000)
+      .audioChannels(options?.channels ?? 1)
+
+    if (typeof options?.gainDb === 'number') {
+      console.log(`[Audio:Converter]   Gain: +${options.gainDb}dB`)
+      command.audioFilters(`volume=${options.gainDb}dB`)
+    }
+
+    command
+      .on('end', () => {
+        const duration = Date.now() - conversionStartTime
+        console.log(`[Audio:Converter] PCM conversion completed in ${duration}ms`)
+        resolve()
+      })
+      .on('error', (err: Error) => {
+        const duration = Date.now() - conversionStartTime
+        console.error(`[Audio:Converter] PCM conversion failed after ${duration}ms:`, err)
         reject(err)
       })
       .save(outputPath)
