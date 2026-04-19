@@ -23,6 +23,7 @@ import { broadcastLanguageSnapshot, getMainLanguageSnapshot, setMainLanguage } f
 import { createASRProvider, type ASRProvider } from '../asr-provider'
 import { hotkeyManager } from '../hotkey-manager'
 import { ioHookManager } from '../iohook-manager'
+import { clearPendingDebounce } from '../hotkey/ptt-handler'
 import type { TextRefiner } from '../refine'
 
 /**
@@ -106,10 +107,10 @@ export function registerConfigHandlers(): void {
       }
       if (config.hotkey) {
         configManager.setHotkeyConfig(config.hotkey)
-        // 重新注册快捷键：先清除所有监听器
         hotkeyManager.unregisterAll()
         ioHookManager.removeAllListeners('keydown')
         ioHookManager.removeAllListeners('keyup')
+        clearPendingDebounce()
         deps.registerGlobalHotkeys()
         console.log('[IPC:Config] Hotkeys re-registered with new config:', config.hotkey)
       }

@@ -64,6 +64,18 @@ export function extractAxiosErrorMessage(error: unknown): string {
   return error.message
 }
 
+export function stripTranscriptMarkers(text: string): string {
+  const beginMarkerPattern = /^\s*BEGIN_TRANSCRIPT\s*\r?\n?/gmu
+  const endMarkerPattern = /\r?\n?\s*END_TRANSCRIPT\s*$/gmu
+
+  return text
+    .replace(beginMarkerPattern, '')
+    .replace(endMarkerPattern, '')
+    .replace(/BEGIN_TRANSCRIPT/g, '')
+    .replace(/END_TRANSCRIPT/g, '')
+    .trim()
+}
+
 export function extractMessageContent(data: OpenAIResponse): string {
   const content = data.choices?.[0]?.message?.content
   if (!content) {
@@ -93,9 +105,9 @@ export function extractMessageContent(data: OpenAIResponse): string {
   const endIndex = text.indexOf(endMarker)
 
   if (beginIndex !== -1 && endIndex !== -1 && endIndex > beginIndex) {
-    return text.slice(beginIndex + beginMarker.length, endIndex).trim()
+    return stripTranscriptMarkers(text.slice(beginIndex + beginMarker.length, endIndex))
   }
 
-  // If markers are not found or in wrong order, return the original text
-  return text
+  // If markers are partial, duplicated, or in wrong order, still strip them defensively.
+  return stripTranscriptMarkers(text)
 }

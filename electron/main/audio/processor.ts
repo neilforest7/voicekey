@@ -7,6 +7,7 @@ import { t } from '../i18n'
 import { historyManager } from '../history-manager'
 import type { ASRProvider } from '../asr-provider'
 import type { TextRefiner } from '../refine'
+import { stripTranscriptMarkers } from '../refine/openai-client'
 import { textInjector } from '../text-injector'
 import { getBackgroundWindow } from '../window/background'
 import { hideOverlay, updateOverlay } from '../window/overlay'
@@ -230,7 +231,7 @@ async function finalizeSessionIfReady(sessionState: ChunkSessionState): Promise<
     orderedTexts.push(sessionState.resultsByIndex.get(index) ?? '')
   }
 
-  const rawText = mergeTranscriptSegments(orderedTexts)
+  const rawText = stripTranscriptMarkers(mergeTranscriptSegments(orderedTexts))
 
   if (shouldSkipSessionOutput(currentSession, rawText)) {
     console.log('[Audio:Processor] No speech detected, skipping history and text injection')
@@ -257,7 +258,7 @@ async function finalizeSessionIfReady(sessionState: ChunkSessionState): Promise<
           processingTotalStages: 2,
         })
         console.log('[Audio:Processor] Refining aggregated transcription...')
-        const refined = await refineService.refineText(rawText)
+        const refined = stripTranscriptMarkers(await refineService.refineText(rawText))
         if (refined.trim().length > 0) {
           finalText = refined
         } else {
@@ -279,6 +280,19 @@ async function finalizeSessionIfReady(sessionState: ChunkSessionState): Promise<
 
   if (shouldSkipSessionOutput(getCurrentSession(), finalText)) {
     console.log('[Audio:Processor] Final text is empty after processing, skipping output')
+    updateSession({
+      transcription: '',
+      status: 'completed',
+    })
+    hideOverlay()
+    clearSession()
+    return
+  }
+
+  finalText = stripTranscriptMarkers(finalText)
+
+  if (shouldSkipSessionOutput(getCurrentSession(), finalText)) {
+    console.log('[Audio:Processor] Final text only contained transcript markers, skipping output')
     updateSession({
       transcription: '',
       status: 'completed',
@@ -310,7 +324,16 @@ async function finalizeSessionIfReady(sessionState: ChunkSessionState): Promise<
   }
 
   console.log('[Audio:Processor] Injecting final text...')
-  await textInjector.injectText(finalText)
+  try {
+    await textInjector.injectText(finalText)
+  } catch (injectError) {
+    console.error('[Audio:Processor] Text injection failed:', injectError)
+    const errorMsg = injectError instanceof Error ? injectError.message : t('errors.generic')
+    updateOverlay({ status: 'error', message: errorMsg })
+    setTimeout(() => hideOverlay(), 3000)
+    clearSession()
+    return
+  }
 
   updateOverlay({ status: 'success' })
   setTimeout(() => hideOverlay(), 800)
@@ -613,21 +636,23 @@ export async function finalizeStreamingSession(sessionId: string): Promise<strin
   // Wait for the final response with a timeout after renderer sends the final chunk
   // Wait for the final response with a timeout
   const FINALIZE_TIMEOUT_MS = 5000
-  let rawText = sessionState.latestText
+  let rawText = stripTranscriptMarkers(sessionState.latestText)
 
   try {
-    rawText = await Promise.race([
-      finalizedPromise,
-      new Promise<string>((resolve) =>
-        setTimeout(() => {
-          console.warn(
-            '[Audio:Processor] Streaming finalize timeout, using latest text:',
-            sessionState.latestText,
-          )
-          resolve(sessionState.latestText)
-        }, FINALIZE_TIMEOUT_MS),
-      ),
-    ])
+    rawText = stripTranscriptMarkers(
+      await Promise.race([
+        finalizedPromise,
+        new Promise<string>((resolve) =>
+          setTimeout(() => {
+            console.warn(
+              '[Audio:Processor] Streaming finalize timeout, using latest text:',
+              sessionState.latestText,
+            )
+            resolve(sessionState.latestText)
+          }, FINALIZE_TIMEOUT_MS),
+        ),
+      ]),
+    )
     console.log('[Audio:Processor] Streaming session finalized with text:', rawText)
   } catch (error) {
     console.error('[Audio:Processor] Error waiting for streaming finalize:', error)
@@ -663,7 +688,7 @@ export async function finalizeStreamingSession(sessionId: string): Promise<strin
         processingTotalStages: 2,
       })
       console.log('[Audio:Processor] Refining streaming transcription...')
-      const refined = await refineService.refineText(rawText)
+      const refined = stripTranscriptMarkers(await refineService.refineText(rawText))
       if (refined.trim().length > 0) {
         finalText = refined
       } else {
@@ -688,6 +713,22 @@ export async function finalizeStreamingSession(sessionId: string): Promise<strin
     return ''
   }
 
+  finalText = stripTranscriptMarkers(finalText)
+
+  if (shouldSkipSessionOutput(getCurrentSession(), finalText)) {
+    console.log(
+      '[Audio:Processor] Streaming final text only contained transcript markers, skipping output',
+    )
+    updateSession({
+      transcription: '',
+      status: 'completed',
+    })
+    hideOverlay()
+    clearSession()
+    streamingSessions.delete(sessionId)
+    return ''
+  }
+
   updateSession({
     transcription: finalText,
     status: 'completed',
@@ -699,7 +740,17 @@ export async function finalizeStreamingSession(sessionId: string): Promise<strin
   })
 
   console.log('[Audio:Processor] Injecting streaming text...')
-  await textInjector.injectText(finalText)
+  try {
+    await textInjector.injectText(finalText)
+  } catch (injectError) {
+    console.error('[Audio:Processor] Streaming text injection failed:', injectError)
+    const errorMsg = injectError instanceof Error ? injectError.message : t('errors.generic')
+    updateOverlay({ status: 'error', message: errorMsg })
+    setTimeout(() => hideOverlay(), 3000)
+    clearSession()
+    streamingSessions.delete(sessionId)
+    return finalText
+  }
 
   updateOverlay({ status: 'success' })
   setTimeout(() => hideOverlay(), 800)

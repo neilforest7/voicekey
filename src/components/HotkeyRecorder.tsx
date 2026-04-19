@@ -154,16 +154,13 @@ export function HotkeyRecorder({
 
       <div className="flex items-center gap-2">
         <div
-          onClick={startRecording}
           className={cn(
-            'flex-1 px-4 py-2.5 rounded-lg border cursor-pointer transition-all',
+            'flex-1 px-4 py-2.5 rounded-lg border transition-all',
             'bg-background text-foreground font-mono text-sm',
             'select-none',
-            isRecording
-              ? 'border-primary ring-2 ring-primary/30 animate-pulse'
-              : 'border-border hover:border-primary/50',
+            isRecording ? 'border-primary ring-2 ring-primary/30 animate-pulse' : 'border-border',
             hasError && 'border-destructive',
-            disabled && 'opacity-50 cursor-not-allowed hover:border-border',
+            disabled && 'opacity-50',
           )}
         >
           <span className={isRecording && pressedKeys.size === 0 ? 'text-muted-foreground' : ''}>

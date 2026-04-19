@@ -154,7 +154,13 @@
     "logCopied": "Logs copied to clipboard",
     "logCopyFailed": "Failed to copy logs",
     "logLoadFailed": "Failed to load logs",
-    "logOpenFailed": "Failed to open log folder"
+    "logOpenFailed": "Failed to open log folder",
+    "logViewTable": "Table",
+    "logViewText": "Text",
+    "logColTime": "Time",
+    "logColLevel": "Level",
+    "logColScope": "Scope",
+    "logColMessage": "Message"
   },
   "hotkey": {
     "title": "Hotkey Settings",

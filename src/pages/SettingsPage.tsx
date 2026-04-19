@@ -302,6 +302,28 @@ export default function SettingsPage() {
     }
   }
 
+  const saveImmediately = (patch: Partial<AppConfig>, onSuccess?: () => void) => {
+    setSaveStatus({ state: 'saving', message: t('settings.autoSave.saving') })
+    void window.electronAPI
+      .setConfig(patch)
+      .then(() => {
+        setOriginalConfig((prev) => {
+          if (!prev) return prev
+          return mergeConfigPatch(prev, patch)
+        })
+        setSaveStatus({ state: 'success', message: t('settings.autoSave.saved') })
+        onSuccess?.()
+      })
+      .catch((error) => {
+        console.error('Failed to persist config:', error)
+        const errorMessage = error instanceof Error ? error.message : t('common.unknownError')
+        setSaveStatus({
+          state: 'error',
+          message: t('settings.autoSave.error', { message: errorMessage }),
+        })
+      })
+  }
+
   const handleAppLanguageChange = (value: string) => {
     const setting = value as LanguageSetting
     setConfig((prev) => ({
@@ -311,31 +333,7 @@ export default function SettingsPage() {
         language: setting,
       },
     }))
-    setOriginalConfig((prev) =>
-      prev
-        ? {
-            ...prev,
-            app: {
-              ...prev.app,
-              language: setting,
-            },
-          }
-        : prev,
-    )
-    setSaveStatus({ state: 'saving', message: t('settings.autoSave.saving') })
-    void window.electronAPI
-      .setConfig({ app: { language: setting } })
-      .then(() => {
-        setSaveStatus({ state: 'success', message: t('settings.autoSave.saved') })
-      })
-      .catch((error) => {
-        console.error('Failed to persist app language:', error)
-        const errorMessage = error instanceof Error ? error.message : t('common.unknownError')
-        setSaveStatus({
-          state: 'error',
-          message: t('settings.autoSave.error', { message: errorMessage }),
-        })
-      })
+    saveImmediately({ app: { language: setting } })
   }
 
   const getHotkeyErrorMessage = (hotkey: AppConfig['hotkey']): string | null => {
@@ -1001,7 +999,8 @@ export default function SettingsPage() {
 
             <div className="space-y-3 border-t border-border pt-4">
               <Button
-                variant="secondary"
+                variant="outline"
+                size="sm"
                 onClick={handleTestConnection}
                 disabled={testingAsr || !canTestAsr}
                 className="no-drag cursor-pointer"
@@ -1158,7 +1157,10 @@ export default function SettingsPage() {
             value={config.hotkey}
             originalValue={originalConfig?.hotkey ?? null}
             isLoading={isConfigLoading}
-            onChange={(hotkey) => setConfig((prev) => ({ ...prev, hotkey }))}
+            onChange={(hotkey) => {
+              setConfig((prev) => ({ ...prev, hotkey }))
+              saveImmediately({ hotkey })
+            }}
           />
           {hotkeyValidationMessage && (
             <Alert variant="destructive" data-testid="hotkey-validation-status">

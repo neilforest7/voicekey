@@ -13,32 +13,26 @@ type RegisterGlobalHotkeysOptions = {
   getWillRunRefine?: () => boolean
 }
 
-/**
- * 注册全局快捷键（PTT + 设置）
- */
+let activeDebounceTimer: NodeJS.Timeout | null = null
+
 export function registerGlobalHotkeys(options: RegisterGlobalHotkeysOptions = {}): void {
+  clearPendingDebounce()
+
   const hotkeyConfig = configManager.getHotkeyConfig()
   const pttKey = hotkeyConfig.pttKey
 
-  // PTT 逻辑：使用 iohook 监听按下与释放
   const pttConfig = parseAccelerator(pttKey)
-  console.log({ pttConfig })
+  console.log('[PTT] Registering hotkey:', pttKey, pttConfig)
 
   if (pttConfig) {
-    // 防抖计时器，防止快速按组合键时误触发
-    let debounceTimer: NodeJS.Timeout | null = null
-    const DEBOUNCE_MS = 50 // 50ms 确认期
+    const DEBOUNCE_MS = 50
 
     const checkPTT = () => {
-      // 判断是否按住设置的快捷键（精确匹配）
       const isPressed = ioHookManager.isPressed(pttConfig.modifiers, pttConfig.key)
       const session = getCurrentSession()
 
-      // Start Recording（带防抖）
-      if (isPressed && (!session || session.status !== 'recording') && !debounceTimer) {
-        // 设置防抖计时器，50ms 后再次确认
-        debounceTimer = setTimeout(() => {
-          // 再次检查是否仍然精确匹配
+      if (isPressed && (!session || session.status !== 'recording') && !activeDebounceTimer) {
+        activeDebounceTimer = setTimeout(() => {
           if (ioHookManager.isPressed(pttConfig.modifiers, pttConfig.key)) {
             const asrConfig = configManager.getASRConfig()
             console.log('[PTT] Starting recording with config:', {
@@ -47,17 +41,15 @@ export function registerGlobalHotkeys(options: RegisterGlobalHotkeysOptions = {}
             })
             handleStartRecording(asrConfig)
           }
-          debounceTimer = null
+          activeDebounceTimer = null
         }, DEBOUNCE_MS)
       }
 
-      // 取消待确认的录音（精确匹配失败）
-      if (!isPressed && debounceTimer) {
-        clearTimeout(debounceTimer)
-        debounceTimer = null
+      if (!isPressed && activeDebounceTimer) {
+        clearTimeout(activeDebounceTimer)
+        activeDebounceTimer = null
       }
 
-      // Stop Recording
       if (!isPressed && session && session.status === 'recording') {
         const asrConfig = configManager.getASRConfig()
         console.log('[PTT] Stopping recording with config:', {
@@ -73,10 +65,18 @@ export function registerGlobalHotkeys(options: RegisterGlobalHotkeysOptions = {}
 
     ioHookManager.on('keydown', checkPTT)
     ioHookManager.on('keyup', checkPTT)
+  } else {
+    console.warn('[PTT] Failed to parse PTT key:', pttKey)
   }
 
-  // 注册设置快捷键 (使用 Electron globalShortcut，因为是单次触发)
   hotkeyManager.register(hotkeyConfig.toggleSettings, () => {
     createSettingsWindow()
   })
+}
+
+export function clearPendingDebounce(): void {
+  if (activeDebounceTimer) {
+    clearTimeout(activeDebounceTimer)
+    activeDebounceTimer = null
+  }
 }

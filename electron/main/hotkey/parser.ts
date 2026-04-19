@@ -47,8 +47,8 @@ export function parseAccelerator(accelerator: string): { modifiers: string[]; ke
   // 3. 解析主键
   const key = keyToUiohookCode(keyStr)
   if (key === null) {
-    console.warn(`[Hotkey:Parser] Unknown key "${keyStr}", falling back to Space`)
-    return { modifiers, key: UiohookKey.Space }
+    console.warn(`[Hotkey:Parser] Unknown key "${keyStr}", skipping registration`)
+    return null
   }
 
   return { modifiers, key }

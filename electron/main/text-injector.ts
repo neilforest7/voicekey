@@ -9,6 +9,8 @@ type ClipboardSnapshot = {
   image?: NativeImage
 }
 
+const INJECT_TIMEOUT_MS = 8000
+
 export class TextInjector {
   constructor() {
     keyboard.config.autoDelayMs = 0
@@ -33,7 +35,17 @@ export class TextInjector {
 
       const typingStartTime = Date.now()
       console.log(`[TextInjector] [${new Date().toISOString()}] Starting text injection...`)
-      await this.typeText(text)
+
+      await Promise.race([
+        this.typeText(text),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error(`Injection timed out after ${INJECT_TIMEOUT_MS}ms`)),
+            INJECT_TIMEOUT_MS,
+          ),
+        ),
+      ])
+
       const typingDuration = Date.now() - typingStartTime
       console.log(`[TextInjector] [${new Date().toISOString()}] Text injection completed`)
       console.log(`[TextInjector] ⏱️  Keyboard typing took ${typingDuration}ms`)

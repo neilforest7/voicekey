@@ -154,7 +154,13 @@
     "logCopied": "日志已复制到剪贴板",
     "logCopyFailed": "复制失败",
     "logLoadFailed": "读取日志失败",
-    "logOpenFailed": "打开日志目录失败"
+    "logOpenFailed": "打开日志目录失败",
+    "logViewTable": "表格",
+    "logViewText": "文本",
+    "logColTime": "时间",
+    "logColLevel": "级别",
+    "logColScope": "范围",
+    "logColMessage": "内容"
   },
   "hotkey": {
     "title": "快捷键设置",

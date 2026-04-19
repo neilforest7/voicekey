@@ -1,3 +1,4 @@
+#!/usr/bin/env sh
 # shellcheck disable=SC1091
 
 echo "Validating commit message format..."
