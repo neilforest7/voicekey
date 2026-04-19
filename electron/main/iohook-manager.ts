@@ -6,6 +6,8 @@ const { uIOhook, UiohookKey } = createRequire(import.meta.url)(
 export { UiohookKey }
 import type { UiohookKeyboardEvent } from 'uiohook-napi'
 import { EventEmitter } from 'events'
+import { configManager } from './config-manager'
+import { parseAccelerator } from './hotkey/parser'
 
 // Define supported modifiers
 const MODIFIERS = {
@@ -107,8 +109,8 @@ export class IOHookManager extends EventEmitter {
 
   private logIfPttRelated(direction: string, keycode: number): void {
     if (!this.pttRelatedKeys) {
-      const config = require('../config-manager').configManager.getHotkeyConfig()
-      const parsed = require('./parser').parseAccelerator(config.pttKey)
+      const config = configManager.getHotkeyConfig()
+      const parsed = parseAccelerator(config.pttKey)
       if (parsed) {
         const keys = new Set<number>([parsed.key])
         const MODS = {
